@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import time
 import json
 import base64
 import urllib.request
@@ -197,6 +198,22 @@ class DocumentAnalyzer:
                 print(f"Error: No valid response for {actual_path}", file=sys.stderr)
                 print(f"Response: {response_data}", file=sys.stderr)
                 return False
+
+        except urllib.error.HTTPError as e:
+            print(f"HTTP Error {e.code} for {actual_path}: {e.reason}", file=sys.stderr)
+
+            # Try to read and parse the error response body
+            try:
+                error_response = json.loads(e.read().decode("utf-8"))
+                if "error" in error_response:
+                    error_msg = error_response["error"].get("message", "Unknown error")
+                    print(f"API Error Details: {error_msg}", file=sys.stderr)
+                else:
+                    print(f"Error response: {error_response}", file=sys.stderr)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                print(f"Could not parse error response body", file=sys.stderr)
+
+            return False
 
         except Exception as e:
             print(f"Error: Failed to call API for {actual_path}: {e}", file=sys.stderr)
