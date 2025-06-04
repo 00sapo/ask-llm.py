@@ -6,3 +6,4 @@ processed_files.txt
 query.txt
 structure.json
 ask-llm.sh
+.aider*
