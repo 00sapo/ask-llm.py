@@ -34,17 +34,11 @@ google-search: true
 Please, use google scholar to search for scholarly sources about similar topics as the paper and check if all the relevant references are included.
 Be critical.
 
-Use the following string to limit the search results:
-`(site:pubmed.ncbi.nlm.nih.gov OR site:dl.acm.org OR site:arxiv.org OR site:ieeexplore.ieee.org OR site:semanticscholar.org OR site:dblp.org OR site:connectedpapers.com OR site:scholar.archive.org OR site:researchgate.net)`
-
 =====
 google-search: true
 
 Please, use google scholar to search for scholarly sources about similar topics as the paper and evaluate the scientific novelty of the contributions paper.
 Be critical.
-
-Use the following string to limit the search results:
-`(site:pubmed.ncbi.nlm.nih.gov OR site:dl.acm.org OR site:arxiv.org OR site:ieeexplore.ieee.org OR site:semanticscholar.org OR site:dblp.org OR site:connectedpapers.com OR site:scholar.archive.org OR site:researchgate.net)`
 
 =====
 google-search: false
