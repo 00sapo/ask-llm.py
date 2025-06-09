@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import time
 import json
 import base64
 import urllib.request
@@ -23,8 +22,12 @@ class DocumentAnalyzer:
         self.report_file = "analysis_report.md"
 
         # Load configuration
-        self.query = self._load_file("query.txt")
-        self.structure = self._load_json("structure.json")
+        self.queries = self._load_queries("query.txt")
+        self.structure = (
+            self._load_json("structure.json")
+            if os.path.exists("structure.json")
+            else None
+        )
 
         # Clear output files
         self._clear_files()
@@ -40,23 +43,74 @@ class DocumentAnalyzer:
             print("Error: Could not retrieve API key using 'rbw get gemini_key'")
             sys.exit(1)
 
-    def _load_file(self, filename):
-        """Load text file content"""
+    def _load_queries(self, filename):
+        """Load and parse queries from text file"""
         try:
             with open(filename, "r", encoding="utf-8") as f:
-                return f.read().strip()
+                content = f.read().strip()
         except FileNotFoundError:
             print(f"Error: {filename} not found")
             sys.exit(1)
 
+        # Split by 3 or more equals signs
+        query_sections = re.split(r"={3,}", content)
+
+        queries = []
+        for section in query_sections:
+            section = section.strip()
+            if not section:
+                continue
+
+            # Parse parameters and query text
+            lines = section.split("\n")
+            params = {}
+            query_lines = []
+
+            for line in lines:
+                line = line.strip()
+                if ":" in line and any(
+                    param in line.lower()
+                    for param in ["model-name:", "temperature:", "google-search:"]
+                ):
+                    key, value = line.split(":", 1)
+                    key = key.strip().lower().replace("-", "_")
+                    value = value.strip()
+
+                    if key == "temperature":
+                        try:
+                            params[key] = float(value)
+                        except ValueError:
+                            print(
+                                f"Warning: Invalid temperature value '{value}', ignoring"
+                            )
+                    elif key == "model_name":
+                        params["model"] = value
+                    elif key == "google_search":
+                        # Parse boolean values
+                        if value.lower() in ["true", "yes", "1", "on"]:
+                            params["google_search"] = True
+                        elif value.lower() in ["false", "no", "0", "off"]:
+                            params["google_search"] = False
+                        else:
+                            print(
+                                f"Warning: Invalid google-search value '{value}', should be true/false"
+                            )
+                else:
+                    query_lines.append(line)
+
+            query_text = "\n".join(query_lines).strip()
+            if query_text:
+                queries.append({"text": query_text, "params": params})
+
+        return queries
+
     def _load_json(self, filename):
         """Load JSON file"""
+        if not os.path.exists(filename):
+            return None
         try:
             with open(filename, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except FileNotFoundError:
-            print(f"Error: {filename} not found")
-            sys.exit(1)
         except json.JSONDecodeError as e:
             print(f"Error: Invalid JSON in {filename}: {e}")
             sys.exit(1)
@@ -122,14 +176,12 @@ class DocumentAnalyzer:
         return None
 
     def process_pdf(self, pdf_path, bibtex_key=""):
-        """Process a single PDF file"""
+        """Process a single PDF file with multiple queries"""
         # Find the actual file
         actual_path = self._find_pdf_file(pdf_path)
         if not actual_path:
             print(f"File not found: {pdf_path}", file=sys.stderr)
             return False
-
-        query_pdf = f"I'm attaching the file {actual_path}\n\n{self.query}"
 
         # Encode PDF to base64
         try:
@@ -139,98 +191,197 @@ class DocumentAnalyzer:
             print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
             return False
 
-        # Create request payload
-        payload = {
-            "contents": [
-                {
-                    "parts": [
+        all_responses = []
+
+        for i, query_info in enumerate(self.queries):
+            query_text = f"I'm attaching the file {actual_path}\n\n{query_info['text']}"
+
+            # Use query-specific model or default
+            model = query_info["params"].get("model", self.model)
+
+            # Create request payload
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": "application/pdf",
+                                    "data": encoded_pdf,
+                                }
+                            },
+                            {"text": query_text},
+                        ]
+                    }
+                ],
+                "generationConfig": {},
+            }
+
+            # Add tools if Google Search is enabled
+            tools = []
+            if query_info["params"].get("google_search", False):
+                tools.append({"googleSearch": {}})
+
+            if tools:
+                payload["tools"] = tools
+
+            # Add temperature if specified
+            if "temperature" in query_info["params"]:
+                payload["generationConfig"]["temperature"] = query_info["params"][
+                    "temperature"
+                ]
+
+            # Add structured output only if structure is available
+            if self.structure:
+                payload["generationConfig"]["responseMimeType"] = "application/json"
+                payload["generationConfig"]["responseSchema"] = self.structure
+
+            # Make API request
+            url = f"{self.base_url}/models/{model}:generateContent?key={self.api_key}"
+
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+
+                with urllib.request.urlopen(req) as response:
+                    response_data = json.loads(response.read().decode("utf-8"))
+
+                # Log response
+                with open(self.logfile, "a", encoding="utf-8") as f:
+                    f.write(f"=== Response for {actual_path} (Query {i + 1}) ===\n")
+                    json.dump(response_data, f, indent=2)
+                    f.write("\n\n")
+
+                # Extract response
+                try:
+                    response_content = response_data["candidates"][0]["content"][
+                        "parts"
+                    ][0]["text"]
+
+                    # Extract grounding metadata if available
+                    grounding_metadata = response_data["candidates"][0].get(
+                        "groundingMetadata"
+                    )
+
+                    all_responses.append(
                         {
-                            "inline_data": {
-                                "mime_type": "application/pdf",
-                                "data": encoded_pdf,
-                            }
-                        },
-                        {"text": query_pdf},
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": self.structure,
-            },
-        }
+                            "query_index": i + 1,
+                            "query_text": query_info["text"],
+                            "params": query_info["params"],
+                            "response": response_content,
+                            "grounding_metadata": grounding_metadata,
+                        }
+                    )
 
-        # Make API request
-        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+                except (KeyError, IndexError):
+                    print(
+                        f"Error: No valid response for {actual_path} (Query {i + 1})",
+                        file=sys.stderr,
+                    )
+                    print(f"Response: {response_data}", file=sys.stderr)
+                    continue
 
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
+            except urllib.error.HTTPError as e:
+                print(
+                    f"HTTP Error {e.code} for {actual_path} (Query {i + 1}): {e.reason}",
+                    file=sys.stderr,
+                )
+                try:
+                    error_response = json.loads(e.read().decode("utf-8"))
+                    if "error" in error_response:
+                        error_msg = error_response["error"].get(
+                            "message", "Unknown error"
+                        )
+                        print(f"API Error Details: {error_msg}", file=sys.stderr)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+                continue
 
-            with urllib.request.urlopen(req) as response:
-                response_data = json.loads(response.read().decode("utf-8"))
+            except Exception as e:
+                print(
+                    f"Error: Failed to call API for {actual_path} (Query {i + 1}): {e}",
+                    file=sys.stderr,
+                )
+                continue
 
-            # Log response
-            with open(self.logfile, "a", encoding="utf-8") as f:
-                f.write(f"=== Response for {actual_path} ===\n")
-                json.dump(response_data, f, indent=2)
-                f.write("\n\n")
+        if all_responses:
+            # Record processed file
+            with open(self.processed_list, "a", encoding="utf-8") as f:
+                f.write(f"{actual_path}|{bibtex_key}\n")
 
-            # Extract structured response
-            try:
-                response_content = response_data["candidates"][0]["content"]["parts"][
-                    0
-                ]["text"]
+            # Add to report
+            self._add_to_report(actual_path, bibtex_key, all_responses)
+            print(f"Successfully processed: {actual_path}")
+            return True
 
-                # Record processed file
-                with open(self.processed_list, "a", encoding="utf-8") as f:
-                    f.write(f"{actual_path}|{bibtex_key}\n")
+        return False
 
-                # Add to report
-                self._add_to_report(actual_path, bibtex_key, response_content)
-
-                print(f"Successfully processed: {actual_path}")
-                return True
-
-            except (KeyError, IndexError):
-                print(f"Error: No valid response for {actual_path}", file=sys.stderr)
-                print(f"Response: {response_data}", file=sys.stderr)
-                return False
-
-        except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code} for {actual_path}: {e.reason}", file=sys.stderr)
-
-            # Try to read and parse the error response body
-            try:
-                error_response = json.loads(e.read().decode("utf-8"))
-                if "error" in error_response:
-                    error_msg = error_response["error"].get("message", "Unknown error")
-                    print(f"API Error Details: {error_msg}", file=sys.stderr)
-                else:
-                    print(f"Error response: {error_response}", file=sys.stderr)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                print(f"Could not parse error response body", file=sys.stderr)
-
-            return False
-
-        except Exception as e:
-            print(f"Error: Failed to call API for {actual_path}: {e}", file=sys.stderr)
-            return False
-
-    def _add_to_report(self, pdf_path, bibtex_key, response_content):
-        """Add entry to the report"""
+    def _add_to_report(self, pdf_path, bibtex_key, all_responses):
+        """Add entry to the report with multiple query responses"""
         with open(self.report_file, "a", encoding="utf-8") as f:
             f.write(f"\n## {os.path.basename(pdf_path)}\n\n")
             f.write(f"**File:** `{pdf_path}`\n")
             if bibtex_key:
                 f.write(f"**BibTeX Key:** `{bibtex_key}`\n")
-            f.write("\n### Analysis Results\n\n")
-            f.write("```json\n")
-            f.write(response_content)
-            f.write("\n```\n\n---\n\n")
+
+            for response_info in all_responses:
+                f.write(f"\n### Query {response_info['query_index']}\n\n")
+                f.write("**Query:**\n```\n")
+                f.write(response_info["query_text"])
+                f.write("\n```\n\n")
+
+                if response_info["params"]:
+                    f.write("**Parameters:**\n")
+                    for key, value in response_info["params"].items():
+                        f.write(f"- {key}: {value}\n")
+                    f.write("\n")
+
+                f.write("**Response:**\n")
+                if self.structure:
+                    f.write("```json\n")
+                    f.write(response_info["response"])
+                    f.write("\n```\n\n")
+                else:
+                    f.write(response_info["response"])
+                    f.write("\n\n")
+
+                # Add grounding information if available
+                if response_info.get("grounding_metadata"):
+                    grounding = response_info["grounding_metadata"]
+                    f.write("**Grounding Information:**\n")
+
+                    # Show search queries used
+                    if "webSearchQueries" in grounding:
+                        f.write("*Search Queries:* ")
+                        f.write(
+                            ", ".join(f"`{q}`" for q in grounding["webSearchQueries"])
+                        )
+                        f.write("\n\n")
+
+                    # Show grounding sources
+                    if "groundingChunks" in grounding:
+                        f.write("*Sources:*\n")
+                        for chunk in grounding["groundingChunks"]:
+                            if "web" in chunk:
+                                web_info = chunk["web"]
+                                title = web_info.get("title", "Unknown")
+                                uri = web_info.get("uri", "#")
+                                f.write(f"- [{title}]({uri})\n")
+                        f.write("\n")
+
+                    # Show search entry point (Google Search suggestions)
+                    if (
+                        "searchEntryPoint" in grounding
+                        and "renderedContent" in grounding["searchEntryPoint"]
+                    ):
+                        f.write(
+                            "*Google Search Suggestions available in response metadata*\n\n"
+                        )
+
+            f.write("---\n\n")
 
     def _generate_summary(self):
         """Generate summary report header and aggregated analysis"""
@@ -245,32 +396,42 @@ class DocumentAnalyzer:
 
 **Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 **Total Documents Processed:** {total_processed}
+**Total Queries:** {len(self.queries)}
 **Model Used:** {self.model}
 
-## Query Used
+## Queries Used
 
-```
-{self.query}
-```
+"""
 
-## Structure Schema
+        for i, query_info in enumerate(self.queries):
+            header += f"### Query {i + 1}\n\n"
+            header += "```\n"
+            header += query_info["text"]
+            header += "\n```\n\n"
+            if query_info["params"]:
+                header += "**Parameters:**\n"
+                for key, value in query_info["params"].items():
+                    header += f"- {key}: {value}\n"
+                header += "\n"
+
+        if self.structure:
+            header += f"""## Structure Schema
 
 ```json
 {json.dumps(self.structure, indent=2)}
 ```
 
-## Individual Results
-
 """
 
-        # Read existing report content
+        header += "## Individual Results\n\n"
+
+        # Read existing report content and write combined content
         try:
             with open(self.report_file, "r", encoding="utf-8") as f:
                 existing_content = f.read()
         except FileNotFoundError:
             existing_content = ""
 
-        # Write combined content
         with open(self.report_file, "w", encoding="utf-8") as f:
             f.write(header)
             f.write(existing_content)
@@ -407,6 +568,11 @@ def main():
         help="Override processed files list output (default: processed_files.txt)",
     )
     parser.add_argument(
+        "--google-search",
+        action="store_true",
+        help="Enable Google Search grounding for all queries",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="ask-llm.py 1.0",
@@ -421,6 +587,7 @@ def main():
             "  python3 ask-llm.py paper1.pdf paper2.pdf\n"
             "  python3 ask-llm.py bibliography.bib\n"
             "  python3 ask-llm.py paper1.pdf bibliography.bib paper2.pdf\n"
+            "  python3 ask-llm.py --google-search paper1.pdf\n"
         )
         sys.exit(1)
 
@@ -431,7 +598,15 @@ def main():
             if args.model:
                 self.model = args.model
             if args.query:
-                self.query = args.query
+                query_params = {}
+                if args.google_search:
+                    query_params["google_search"] = True
+                self.queries = [{"text": args.query, "params": query_params}]
+            elif args.google_search:
+                # Enable Google Search for all queries if --google-search flag is used
+                for query in self.queries:
+                    if "google_search" not in query["params"]:
+                        query["params"]["google_search"] = True
             if args.structure:
                 self.structure = self._load_json(args.structure)
             if args.report:
