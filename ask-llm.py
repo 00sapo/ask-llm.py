@@ -301,22 +301,6 @@ class DocumentAnalyzer:
                     )
                 return bibtex_relative_path
 
-        # Try common directories relative to CWD
-        common_dirs = [".", "papers", "pdfs", "documents"]
-        basename = os.path.basename(pdf_path)
-
-        if self.verbose:
-            print(
-                f"[DEBUG] Searching for {basename} in common directories: {common_dirs}"
-            )
-
-        for directory in common_dirs:
-            full_path = os.path.join(directory, basename)
-            if os.path.isfile(full_path):
-                if self.verbose:
-                    print(f"[DEBUG] Found PDF at: {full_path}")
-                return full_path
-
         if self.verbose:
             print("[DEBUG] PDF file not found in any location")
         return None
