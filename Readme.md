@@ -102,27 +102,7 @@ python3 ask-llm.py -v paper1.pdf
   Model-Name: gemini-1.5-flash-latest
   Temperature: 0.7
   Google-Search: true
-  ```json
-  {
-    "title": "string",
-    "summary": "string",
-    "keywords": ["string"]
-  }
-  ```
-
-  Summarize the main contributions of this paper and extract up to 5 relevant keywords.
-
-  ===
-  Google-Search: false
-  Identify the core methodology used in this research.
-
-  ```
-
-- **structure.json** (optional, default name)
-  A JSON file defining a default schema for the LLM's response. This is used if a query in `query.md` does not have its own embedded JSON structure and the `--structure` argument is not provided.
-  Example `structure.json`:
-
-  ```json
+  \`\`\`json
   {
     "type": "object",
     "properties": {
@@ -131,7 +111,14 @@ python3 ask-llm.py -v paper1.pdf
     },
     "required": ["main_finding"]
   }
-  ```
+  \`\`\`
+
+  Summarize the main contributions of this paper and extract up to 5 relevant keywords.
+
+  ===
+  Google-Search: false
+  Identify the core methodology used in this research.
+
 
 ---
 

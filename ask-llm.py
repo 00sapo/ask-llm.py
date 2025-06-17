@@ -865,12 +865,6 @@ def main():
         help="Override query prompt (default: contents of query.txt)",
     )
     parser.add_argument(
-        "--structure",
-        type=str,
-        default=None,
-        help="Override structure schema file (default: structure.json)",
-    )
-    parser.add_argument(
         "--report",
         type=str,
         default=None,
@@ -945,14 +939,6 @@ def main():
                         query["params"]["google_search"] = True
                 if self.verbose:
                     print("[DEBUG] Google Search enabled for all queries via CLI flag")
-            if args.structure:
-                structure_data = self._load_json(args.structure)
-                # Apply this structure to all queries that don't have one
-                for query in self.queries:
-                    if not query.get("structure"):
-                        query["structure"] = structure_data
-                if self.verbose:
-                    print(f"[DEBUG] Structure overridden from: {args.structure}")
             if args.report:
                 self.report_file = args.report
                 if self.verbose:
