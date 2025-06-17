@@ -281,7 +281,7 @@ class DocumentAnalyzer:
             print(f"[DEBUG] Extracted {len(pdf_mappings)} PDF mappings from BibTeX")
         return pdf_mappings
 
-    def _find_pdf_file(self, pdf_path):
+    def _find_pdf_file(self, pdf_path, bibtex_dir=None):
         """Find PDF file in common locations if not found at given path"""
         if self.verbose:
             print(f"[DEBUG] Looking for PDF file: {pdf_path}")
@@ -291,7 +291,17 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Found PDF at original path: {pdf_path}")
             return pdf_path
 
-        # Try common directories
+        # If we have a BibTeX directory, try relative to that first
+        if bibtex_dir:
+            bibtex_relative_path = os.path.join(bibtex_dir, pdf_path)
+            if os.path.isfile(bibtex_relative_path):
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Found PDF relative to BibTeX directory: {bibtex_relative_path}"
+                    )
+                return bibtex_relative_path
+
+        # Try common directories relative to CWD
         common_dirs = [".", "papers", "pdfs", "documents"]
         basename = os.path.basename(pdf_path)
 
@@ -406,7 +416,7 @@ class DocumentAnalyzer:
         with open(self.report_file, "a", encoding="utf-8") as f:
             f.write("---\n\n")
 
-    def process_pdf(self, pdf_path, bibtex_key="", entry_text=""):
+    def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file or BibTeX metadata with multiple queries"""
         if self.verbose:
             print(f"[DEBUG] Starting processing of: {pdf_path}")
@@ -417,7 +427,10 @@ class DocumentAnalyzer:
         metadata = None
 
         if pdf_path:
-            actual_path = self._find_pdf_file(pdf_path)
+            actual_path = self._find_pdf_file(
+                pdf_path,
+                os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
+            )
 
         if actual_path:
             # Process PDF
@@ -820,14 +833,17 @@ class DocumentAnalyzer:
 
             for mapping in pdf_mappings:
                 self.process_pdf(
-                    mapping["pdf_path"], mapping["bibtex_key"], mapping["entry_text"]
+                    mapping["pdf_path"],
+                    mapping["bibtex_key"],
+                    mapping["entry_text"],
+                    bibtex_file,  # Pass the BibTeX file path
                 )
 
         # Process individual PDF files
         for pdf_file in pdf_files:
             if self.verbose:
                 print(f"[DEBUG] Processing individual PDF: {pdf_file}")
-            self.process_pdf(pdf_file)
+            self.process_pdf(pdf_file)  # No bibtex_file_path needed for direct PDFs
 
         # Generate final report
         self._generate_summary()
