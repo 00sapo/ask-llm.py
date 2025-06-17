@@ -28,18 +28,10 @@ class DocumentAnalyzer:
             print(f"[DEBUG] Default model: {self.model}")
 
         # Load configuration
-        self.queries = self._load_queries("query.txt")
-        self.structure = (
-            self._load_json("structure.json")
-            if os.path.exists("structure.json")
-            else None
-        )
+        self.queries = self._load_queries("query.md")
 
         if self.verbose:
             print(f"[DEBUG] Loaded {len(self.queries)} queries")
-            print(
-                f"[DEBUG] Structure schema: {'loaded' if self.structure else 'not found'}"
-            )
 
         # Clear output files
         self._clear_files()
@@ -127,11 +119,29 @@ class DocumentAnalyzer:
                     query_lines.append(line)
 
             query_text = "\n".join(query_lines).strip()
+
+            # Look for JSON code blocks in the query
+            json_blocks = re.findall(r"```json\s*\n(.*?)\n```", section, re.DOTALL)
+            structure = None
+            if json_blocks:
+                try:
+                    structure = json.loads(json_blocks[0])  # Use first JSON block
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Found JSON structure in query {len(queries) + 1}"
+                        )
+                except json.JSONDecodeError as e:
+                    print(
+                        f"Warning: Invalid JSON structure in query {len(queries) + 1}: {e}"
+                    )
+
             if query_text:
-                queries.append({"text": query_text, "params": params})
+                queries.append(
+                    {"text": query_text, "params": params, "structure": structure}
+                )
                 if self.verbose:
                     print(
-                        f"[DEBUG] Added query {len(queries)} with {len(params)} parameters"
+                        f"[DEBUG] Added query {len(queries)} with {len(params)} parameters and {'structure' if structure else 'no structure'}"
                     )
 
         if self.verbose:
@@ -167,8 +177,49 @@ class DocumentAnalyzer:
             if self.verbose:
                 print(f"[DEBUG] Cleared {filename}")
 
+    def _extract_bibtex_metadata(self, entry_text, bibtex_key):
+        """Extract metadata from a BibTeX entry"""
+        metadata = {"bibtex_key": bibtex_key}
+
+        # Fields to extract
+        fields = ["title", "author", "year", "abstract", "journal", "booktitle"]
+
+        for field in fields:
+            # Match field = {content} or field = "content"
+            pattern = rf'{field}\s*=\s*[{{"]([^{{}}"]*)[\}}"]\s*[,\s]'
+            match = re.search(pattern, entry_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                value = match.group(1).strip()
+                # Clean up common LaTeX formatting
+                value = re.sub(
+                    r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", value
+                )  # \emph{text} -> text
+                value = re.sub(r"[{}]", "", value)  # Remove remaining braces
+                value = value.replace("\\&", "&").replace("\\_", "_")  # Common escapes
+                metadata[field] = value
+
+        return metadata
+
+    def _format_metadata_for_prompt(self, metadata):
+        """Format metadata for inclusion in prompt"""
+        parts = []
+        if metadata.get("title"):
+            parts.append(f"Title: {metadata['title']}")
+        if metadata.get("author"):
+            parts.append(f"Authors: {metadata['author']}")
+        if metadata.get("year"):
+            parts.append(f"Year: {metadata['year']}")
+        if metadata.get("journal"):
+            parts.append(f"Journal: {metadata['journal']}")
+        if metadata.get("booktitle"):
+            parts.append(f"Book/Conference: {metadata['booktitle']}")
+        if metadata.get("abstract"):
+            parts.append(f"Abstract: {metadata['abstract']}")
+
+        return "\n".join(parts)
+
     def extract_pdfs_from_bibtex(self, bibtex_file):
-        """Extract PDF paths and keys from BibTeX file"""
+        """Extract PDF paths and keys from BibTeX file, including full entry text"""
         if self.verbose:
             print(f"[DEBUG] Extracting PDFs from BibTeX file: {bibtex_file}")
         try:
@@ -198,10 +249,13 @@ class DocumentAnalyzer:
                 continue
 
             bibtex_key = key_match.group(1).strip()
+            full_entry = "@" + entry  # Store full entry for metadata extraction
+
             if self.verbose:
                 print(f"[DEBUG] Processing BibTeX entry: {bibtex_key}")
 
             # Look for file field
+            pdf_path = None
             for line in lines:
                 file_match = re.search(r'file\s*=\s*["{]([^"}]+)', line)
                 if file_match:
@@ -210,10 +264,18 @@ class DocumentAnalyzer:
                     pdf_match = re.search(r"^([^;:]+\.pdf)", file_path)
                     if pdf_match:
                         pdf_path = pdf_match.group(1)
-                        pdf_mappings.append((pdf_path, bibtex_key))
                         if self.verbose:
                             print(f"[DEBUG] Found PDF: {pdf_path} for key {bibtex_key}")
                         break
+
+            # Store mapping with full entry text
+            pdf_mappings.append(
+                {
+                    "pdf_path": pdf_path,
+                    "bibtex_key": bibtex_key,
+                    "entry_text": full_entry,
+                }
+            )
 
         if self.verbose:
             print(f"[DEBUG] Extracted {len(pdf_mappings)} PDF mappings from BibTeX")
@@ -260,6 +322,23 @@ class DocumentAnalyzer:
             if bibtex_key:
                 f.write(f"**BibTeX Key:** `{bibtex_key}`\n")
 
+    def _write_metadata_header(self, metadata, original_pdf_path):
+        """Write metadata header to report"""
+        if self.verbose:
+            print(
+                f"[DEBUG] Writing metadata header to report for {metadata['bibtex_key']}"
+            )
+
+        with open(self.report_file, "a", encoding="utf-8") as f:
+            f.write(
+                f"\n## {metadata.get('title', 'Unknown Title')} (Metadata Only)\n\n"
+            )
+            f.write(f"**Original PDF Path:** `{original_pdf_path}` *(not found)*\n")
+            f.write(f"**BibTeX Key:** `{metadata['bibtex_key']}`\n")
+            f.write(
+                "**Note:** PDF file not available, analysis based on bibliographic metadata only.\n\n"
+            )
+
     def _add_query_to_report(self, response_info):
         """Add a single query response to the report immediately"""
         if self.verbose:
@@ -277,8 +356,13 @@ class DocumentAnalyzer:
                     f.write(f"- {key}: {value}\n")
                 f.write("\n")
 
+            if response_info.get("structure"):
+                f.write("**Structure:**\n```json\n")
+                f.write(json.dumps(response_info["structure"], indent=2))
+                f.write("\n```\n\n")
+
             f.write("**Response:**\n")
-            if self.structure:
+            if response_info.get("structure"):
                 f.write("```json\n")
                 f.write(response_info["response"])
                 f.write("\n```\n\n")
@@ -322,34 +406,49 @@ class DocumentAnalyzer:
         with open(self.report_file, "a", encoding="utf-8") as f:
             f.write("---\n\n")
 
-    def process_pdf(self, pdf_path, bibtex_key=""):
-        """Process a single PDF file with multiple queries"""
+    def process_pdf(self, pdf_path, bibtex_key="", entry_text=""):
+        """Process a single PDF file or BibTeX metadata with multiple queries"""
         if self.verbose:
-            print(f"[DEBUG] Starting processing of PDF: {pdf_path}")
+            print(f"[DEBUG] Starting processing of: {pdf_path}")
 
-        # Find the actual file
-        actual_path = self._find_pdf_file(pdf_path)
-        if not actual_path:
-            print(f"File not found: {pdf_path}", file=sys.stderr)
-            return False
+        # Try to find PDF file first
+        actual_path = None
+        pdf_data = None
+        metadata = None
 
-        # Encode PDF to base64
-        try:
-            with open(actual_path, "rb") as f:
-                pdf_data = f.read()
+        if pdf_path:
+            actual_path = self._find_pdf_file(pdf_path)
+
+        if actual_path:
+            # Process PDF
+            try:
+                with open(actual_path, "rb") as f:
+                    pdf_data = f.read()
+                    if self.verbose:
+                        print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
+                    encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
+                        )
+            except Exception as e:
+                print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
+                return False
+        else:
+            # Fallback to metadata if PDF not found and we have BibTeX entry
+            if entry_text and bibtex_key:
+                metadata = self._extract_bibtex_metadata(entry_text, bibtex_key)
                 if self.verbose:
-                    print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
-                encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
-                    )
-        except Exception as e:
-            print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
-            return False
+                    print(f"[DEBUG] Using metadata for {bibtex_key} (PDF not found)")
+            else:
+                print(f"File not found: {pdf_path}", file=sys.stderr)
+                return False
 
-        # Write PDF header to report immediately
-        self._write_pdf_header(actual_path, bibtex_key)
+        # Write header to report
+        if actual_path:
+            self._write_pdf_header(actual_path, bibtex_key)
+        else:
+            self._write_metadata_header(metadata, pdf_path)
 
         successful_queries = 0
 
@@ -358,30 +457,41 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Processing query {i + 1}/{len(self.queries)}")
                 print(f"[DEBUG] Query parameters: {query_info['params']}")
 
-            query_text = f"I'm attaching the file {actual_path}\n\n{query_info['text']}"
-
             # Use query-specific model or default
             model = query_info["params"].get("model", self.model)
             if self.verbose:
                 print(f"[DEBUG] Using model: {model}")
 
-            # Create request payload
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "inline_data": {
-                                    "mime_type": "application/pdf",
-                                    "data": encoded_pdf,
-                                }
-                            },
-                            {"text": query_text},
-                        ]
-                    }
-                ],
-                "generationConfig": {},
-            }
+            # Create appropriate prompt and payload
+            if pdf_data:
+                # PDF processing
+                query_text = (
+                    f"I'm attaching the PDF file {actual_path}\n\n{query_info['text']}"
+                )
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {
+                                    "inline_data": {
+                                        "mime_type": "application/pdf",
+                                        "data": encoded_pdf,
+                                    }
+                                },
+                                {"text": query_text},
+                            ]
+                        }
+                    ],
+                    "generationConfig": {},
+                }
+            else:
+                # Metadata processing
+                metadata_text = self._format_metadata_for_prompt(metadata)
+                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info['text']}"
+                payload = {
+                    "contents": [{"parts": [{"text": query_text}]}],
+                    "generationConfig": {},
+                }
 
             # Add tools if Google Search is enabled
             tools = []
@@ -403,12 +513,13 @@ class DocumentAnalyzer:
                         f"[DEBUG] Set temperature to: {query_info['params']['temperature']}"
                     )
 
-            # Add structured output only if structure is available
-            if self.structure:
+            # Add structured output only if structure is available for this query
+            query_structure = query_info.get("structure")
+            if query_structure:
                 payload["generationConfig"]["responseMimeType"] = "application/json"
-                payload["generationConfig"]["responseSchema"] = self.structure
+                payload["generationConfig"]["responseSchema"] = query_structure
                 if self.verbose:
-                    print("[DEBUG] Structured output enabled")
+                    print("[DEBUG] Structured output enabled for this query")
 
             # Make API request
             url = f"{self.base_url}/models/{model}:generateContent?key={self.api_key}"
@@ -437,7 +548,9 @@ class DocumentAnalyzer:
 
                 # Log response
                 with open(self.logfile, "a", encoding="utf-8") as f:
-                    f.write(f"=== Response for {actual_path} (Query {i + 1}) ===\n")
+                    f.write(
+                        f"=== Response for {actual_path or bibtex_key} (Query {i + 1}) ===\n"
+                    )
                     json.dump(response_data, f, indent=2)
                     f.write("\n\n")
 
@@ -472,6 +585,7 @@ class DocumentAnalyzer:
                         "query_index": i + 1,
                         "query_text": query_info["text"],
                         "params": query_info["params"],
+                        "structure": query_info.get("structure"),
                         "response": response_content,
                         "grounding_metadata": grounding_metadata,
                     }
@@ -485,7 +599,7 @@ class DocumentAnalyzer:
 
                 except (KeyError, IndexError):
                     print(
-                        f"Error: No valid response for {actual_path} (Query {i + 1})",
+                        f"Error: No valid response for {actual_path or bibtex_key} (Query {i + 1})",
                         file=sys.stderr,
                     )
                     if self.verbose:
@@ -497,7 +611,7 @@ class DocumentAnalyzer:
 
             except urllib.error.HTTPError as e:
                 print(
-                    f"HTTP Error {e.code} for {actual_path} (Query {i + 1}): {e.reason}",
+                    f"HTTP Error {e.code} for {actual_path or bibtex_key} (Query {i + 1}): {e.reason}",
                     file=sys.stderr,
                 )
                 if self.verbose:
@@ -517,31 +631,36 @@ class DocumentAnalyzer:
 
             except Exception as e:
                 print(
-                    f"Error: Failed to call API for {actual_path} (Query {i + 1}): {e}",
+                    f"Error: Failed to call API for {actual_path or bibtex_key} (Query {i + 1}): {e}",
                     file=sys.stderr,
                 )
                 if self.verbose:
                     print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
                 continue
 
-        # Close PDF section in report
+        # Close section in report
         self._close_pdf_section()
 
         if successful_queries > 0:
             if self.verbose:
                 print(
-                    f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path}"
+                    f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or bibtex_key}"
                 )
 
             # Record processed file
             with open(self.processed_list, "a", encoding="utf-8") as f:
-                f.write(f"{actual_path}|{bibtex_key}\n")
+                if actual_path:
+                    f.write(f"{actual_path}|{bibtex_key}\n")
+                else:
+                    f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
 
-            print(f"Successfully processed: {actual_path}")
+            print(
+                f"Successfully processed: {actual_path or f'metadata for {bibtex_key}'}"
+            )
             return True
 
         if self.verbose:
-            print(f"[DEBUG] No responses processed for {actual_path}")
+            print(f"[DEBUG] No responses processed for {actual_path or bibtex_key}")
         return False
 
     def _generate_summary(self):
@@ -580,15 +699,10 @@ class DocumentAnalyzer:
                 for key, value in query_info["params"].items():
                     header += f"- {key}: {value}\n"
                 header += "\n"
-
-        if self.structure:
-            header += f"""## Structure Schema
-
-```json
-{json.dumps(self.structure, indent=2)}
-```
-
-"""
+            if query_info.get("structure"):
+                header += "**Structure:**\n```json\n"
+                header += json.dumps(query_info["structure"], indent=2)
+                header += "\n```\n\n"
 
         header += "## Individual Results\n\n"
 
@@ -704,8 +818,10 @@ class DocumentAnalyzer:
             print(f"Processing BibTeX file: {bibtex_file}")
             pdf_mappings = self.extract_pdfs_from_bibtex(bibtex_file)
 
-            for pdf_path, bibtex_key in pdf_mappings:
-                self.process_pdf(pdf_path, bibtex_key)
+            for mapping in pdf_mappings:
+                self.process_pdf(
+                    mapping["pdf_path"], mapping["bibtex_key"], mapping["entry_text"]
+                )
 
         # Process individual PDF files
         for pdf_file in pdf_files:
@@ -815,7 +931,9 @@ def main():
                 query_params = {}
                 if args.google_search:
                     query_params["google_search"] = True
-                self.queries = [{"text": args.query, "params": query_params}]
+                self.queries = [
+                    {"text": args.query, "params": query_params, "structure": None}
+                ]
                 if self.verbose:
                     print(
                         f"[DEBUG] Query overridden with {len(query_params)} parameters"
@@ -828,7 +946,11 @@ def main():
                 if self.verbose:
                     print("[DEBUG] Google Search enabled for all queries via CLI flag")
             if args.structure:
-                self.structure = self._load_json(args.structure)
+                structure_data = self._load_json(args.structure)
+                # Apply this structure to all queries that don't have one
+                for query in self.queries:
+                    if not query.get("structure"):
+                        query["structure"] = structure_data
                 if self.verbose:
                     print(f"[DEBUG] Structure overridden from: {args.structure}")
             if args.report:

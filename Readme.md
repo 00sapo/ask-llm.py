@@ -9,34 +9,39 @@
 ## SYNOPSIS
 
 ```sh
-python3 ask-llm.py [PDF|BIB]...
+python3 ask-llm.py [OPTIONS] [PDF|BIB]...
 ```
 
 ---
 
 ## DESCRIPTION
 
-**ask-llm.py** is a Python script for batch-analyzing PDF files (and optionally BibTeX bibliographies) using the Gemini LLM API. It sends each PDF to the API with a user-defined prompt and schema, collects structured JSON responses, and generates a Markdown report summarizing the results.
+**ask-llm.py** is a Python script for batch-analyzing PDF files (and optionally BibTeX bibliographies) using Google's Gemini LLM API. It sends each PDF (or its extracted metadata if the PDF is not found) to the API with user-defined prompts and optional JSON schemas, collects structured JSON responses (if specified), and generates a Markdown report summarizing the results.
 
 The script supports:
 
-- Direct PDF file input
-- Extraction and processing of PDFs referenced in `.bib` files
-- Aggregated reporting with summary statistics
-- Logging of raw API responses
+- Direct PDF file input.
+- Extraction and processing of PDFs referenced in `.bib` files. If a PDF is not found, analysis can proceed using its BibTeX metadata.
+- Multiple queries defined in a `query.md` file, each with its own parameters (e.g., model, temperature, Google Search enablement) and optional JSON output schema.
+- Google Search grounding for queries to enhance factual accuracy.
+- Aggregated reporting with summary statistics.
+- Logging of raw API responses.
+- Verbose output for debugging.
+- Customizable output filenames and an append mode for reports.
 
-This is especially useful for conducting systematic surveys and producing material for further LLM processing without the need for lower accuracy RAG and vector databases.
+This is especially useful for conducting systematic surveys and producing material for further LLM processing.
 
 ---
 
 ## REQUIREMENTS
 
-- **Gemini API key** stored in [rbw](https://github.com/doy/rbw) as `gemini_key`
-- Python 3.7 or newer
+- **Gemini API key** stored in [rbw](https://github.com/doy/rbw) as `gemini_key`.
+- Python 3.7 or newer.
 - **External tools:**
-  - `rbw` (for API key retrieval)
-- `query.txt` — your instruction prompt
-- `structure.json` — JSON schema for the expected output
+  - `rbw` (for API key retrieval).
+- **Input files (defaults):**
+  - `query.md` — Contains your instruction prompts, parameters, and optional JSON schemas.
+  - `structure.json` (optional) — A default JSON schema if not specified in `query.md` or via `--structure`.
 
 ---
 
@@ -60,86 +65,175 @@ python3 ask-llm.py references.bib
 python3 ask-llm.py paper1.pdf references.bib paper2.pdf
 ```
 
+### Use Google Search for Grounding
+
+```sh
+python3 ask-llm.py --google-search paper1.pdf
+```
+
+### Specify a Different Model
+
+```sh
+python3 ask-llm.py --model gemini-1.5-pro-latest paper1.pdf
+```
+
+### Run in Verbose Mode
+
+```sh
+python3 ask-llm.py -v paper1.pdf
+```
+
 ---
 
 ## INPUT FILES
 
-- **query.txt**  
-  The prompt sent to the LLM (e.g., "Summarize the main contributions and extract keywords.")
+- **query.md** (default name)
+  A text file defining one or more queries to be run against each document. Queries are separated by three or more equals signs (`===`).
+  Each query can specify:
+  - **Model Name:** `Model-Name: <model_identifier>` (e.g., `gemini-1.5-pro-latest`)
+  - **Temperature:** `Temperature: <float_value>` (e.g., `0.5`)
+  - **Google Search:** `Google-Search: <true|false>`
+  - **JSON Output Structure:** An embedded JSON code block (```json ...```) defining the desired output schema.
+  The rest of the text in a query section is treated as the prompt.
 
-- **structure.json**  
-  The expected JSON structure for the LLM response (e.g., fields like `title`, `summary`, `keywords`).
+  Example `query.md`:
+
+  ```markdown
+  Model-Name: gemini-1.5-flash-latest
+  Temperature: 0.7
+  Google-Search: true
+  ```json
+  {
+    "title": "string",
+    "summary": "string",
+    "keywords": ["string"]
+  }
+  ```
+
+  Summarize the main contributions of this paper and extract up to 5 relevant keywords.
+
+  ===
+  Google-Search: false
+  Identify the core methodology used in this research.
+
+  ```
+
+- **structure.json** (optional, default name)
+  A JSON file defining a default schema for the LLM's response. This is used if a query in `query.md` does not have its own embedded JSON structure and the `--structure` argument is not provided.
+  Example `structure.json`:
+
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "main_finding": { "type": "string" },
+      "confidence_score": { "type": "number" }
+    },
+    "required": ["main_finding"]
+  }
+  ```
 
 ---
 
 ## OUTPUT FILES
 
-- **analysis_report.md**  
-  Aggregated Markdown report with per-document results and summary statistics.
+(Default names, can be overridden by command-line options)
 
-- **log.txt**  
-  Raw API responses for each processed file.
+- **analysis_report.md**
+  Aggregated Markdown report with per-document results for each query and summary statistics.
 
-- **processed_files.txt**  
-  List of processed files and BibTeX keys.
+- **log.txt**
+  Raw API responses for each processed file and query.
+
+- **processed_files.txt**
+  List of processed files (or BibTeX keys for metadata-only entries) and their associated BibTeX keys.
 
 ---
 
 ## OPTIONS
 
-None. All arguments are treated as input files (PDF or BibTeX).
+- `files` (Positional arguments)
+    PDF files and/or BibTeX files to process.
+
+- `--no-clear`
+    Do not clear output files (`analysis_report.md`, `log.txt`, `processed_files.txt`) before processing. New results will be appended.
+
+- `--model <MODEL_IDENTIFIER>`
+    Override the default Gemini model for all queries (e.g., `gemini-1.5-pro-latest`). Default is `gemini-1.5-flash-preview-05-20`. This can be overridden on a per-query basis in `query.md`.
+
+- `--query <QUERY_TEXT | FILE_PATH>`
+    Override the query prompts. If a file path is given, it's treated like `query.md`. If a string is given, it's used as a single prompt for all documents. This overrides `query.md`.
+
+- `--structure <FILE_PATH>`
+    Override the JSON structure schema file. This applies to queries that do not have an embedded schema in `query.md`. Overrides `structure.json`.
+
+- `--report <FILE_PATH>`
+    Override the report output file (default: `analysis_report.md`).
+
+- `--log <FILE_PATH>`
+    Override the log output file (default: `log.txt`).
+
+- `--processed-list <FILE_PATH>`
+    Override the processed files list output file (default: `processed_files.txt`).
+
+- `--google-search`
+    Enable Google Search grounding for all queries by default. This can be overridden on a per-query basis in `query.md`.
+
+- `--verbose`, `-v`
+    Enable verbose debug output to the console.
+
+- `--version`
+    Show the script's version number and exit.
 
 ---
 
 ## EXAMPLES
 
-Analyze two PDFs:
+Analyze two PDFs with default settings:
 
 ```sh
 python3 ask-llm.py mypaper.pdf relatedwork.pdf
 ```
 
-Analyze all PDFs referenced in a BibTeX file:
+Analyze all PDFs referenced in a BibTeX file, appending to existing reports:
 
 ```sh
-python3 ask-llm.py myrefs.bib
+python3 ask-llm.py --no-clear myrefs.bib
 ```
 
-Analyze a mix of PDFs and BibTeX files:
+Analyze a PDF using a specific query file and enabling Google Search for all queries:
 
 ```sh
-python3 ask-llm.py mypaper.pdf myrefs.bib
+python3 ask-llm.py --query custom_prompts.md --google-search mypaper.pdf
+```
+
+Specify a custom report file and run in verbose mode:
+
+```sh
+python3 ask-llm.py --report detailed_analysis.md -v document.pdf
 ```
 
 ---
 
 ## ENVIRONMENT
 
-- **rbw**: Used to retrieve the Gemini API key (`gemini_key`).
-- **PATH**: Must include `rbw` and, if using BibTeX, `bibtool`.
+- **rbw**: Used to retrieve the Gemini API key (`gemini_key`). Ensure `rbw` is in your `PATH`.
 
 ---
 
 ## DEPENDENCIES
 
 - Python 3.7+
-- [requests](https://pypi.org/project/requests/)
-- [PyPDF2](https://pypi.org/project/PyPDF2/)
-- `rbw`
-- `bibtool` (for `.bib` files)
+- `rbw` (Bitwarden CLI)
 
-Install Python dependencies with:
-
-```sh
-pip install requests PyPDF2
-```
+The script uses standard Python libraries such as `json`, `base64`, `urllib.request`, `subprocess`, `sys`, `os`, `re`, `datetime`, `pathlib`, and `argparse`. No external Python packages like `requests` or `PyPDF2` need to be installed via pip for the core functionality.
 
 ---
 
 ## EXIT STATUS
 
 - `0` on success
-- Non-zero on error (e.g., missing dependencies, API errors, file not found)
+- Non-zero on error (e.g., missing API key, API errors, file not found)
 
 ---
 
@@ -147,7 +241,6 @@ pip install requests PyPDF2
 
 - [Gemini API Documentation](https://ai.google.dev/)
 - [rbw Password Manager](https://github.com/doy/rbw)
-- [bibtool](https://ctan.org/pkg/bibtool)
 
 ---
 
@@ -160,20 +253,3 @@ pip install requests PyPDF2
 ## LICENSE
 
 MIT License (or specify your own).
-
----
-
-**Example directory structure:**
-
-```
-ask-llm.py
-query.txt
-structure.json
-paper1.pdf
-references.bib
-```
-
----
-
-**Note:**  
-Edit `query.txt` and `structure.json` to customize the analysis. Ensure your Gemini API key is stored in `rbw` as `gemini_key`.
