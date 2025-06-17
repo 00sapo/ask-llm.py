@@ -25,6 +25,7 @@ The script supports:
 - Multiple queries defined in a `query.md` file, each with its own parameters (e.g., model, temperature, Google Search enablement) and optional JSON output schema.
 - Google Search grounding for queries to enhance factual accuracy.
 - JSON output format for easy programmatic processing.
+- CSV output format (specify `.csv` extension) for spreadsheet analysis.
 - Logging of raw API responses.
 - Verbose output for debugging.
 - Customizable output filenames and an append mode for reports.
@@ -76,6 +77,12 @@ python3 ask-llm.py --google-search paper1.pdf
 python3 ask-llm.py --model gemini-1.5-pro-latest paper1.pdf
 ```
 
+### Generate CSV Output
+
+```sh
+python3 ask-llm.py --report results.csv paper1.pdf
+```
+
 ### Run in Verbose Mode
 
 ```sh
@@ -125,8 +132,8 @@ python3 ask-llm.py -v paper1.pdf
 
 (Default names, can be overridden by command-line options)
 
-- **analysis_report.json**
-  Structured JSON report containing all results organized by document and query.
+- **analysis_report.json** (or **analysis_report.csv** if CSV format is specified)
+  Structured report containing all results organized by document and query.
 
 - **log.txt**
   Raw API responses for each processed file and query.
@@ -171,6 +178,15 @@ The generated JSON report has the following structure:
 }
 ```
 
+### CSV Output Structure
+
+When CSV format is specified (by using a `.csv` file extension), the output will be a spreadsheet-compatible format with:
+- Rows representing documents
+- Columns for document metadata (ID, BibTeX Key, File Path, Metadata Only status)
+- Additional columns for each query response
+- JSON responses are serialized as compact JSON strings
+- Text responses have newlines replaced with spaces for CSV compatibility
+
 ---
 
 ## OPTIONS
@@ -188,7 +204,7 @@ The generated JSON report has the following structure:
     Override the query prompts. If a file path is given, it's treated like `query.md`. If a string is given, it's used as a single prompt for all documents. This overrides `query.md`.
 
 - `--report <FILE_PATH>`
-    Override the report output file (default: `analysis_report.json`).
+    Override the report output file (default: `analysis_report.json`, use .csv extension for CSV format).
 
 - `--log <FILE_PATH>`
     Override the log output file (default: `log.txt`).
@@ -227,6 +243,12 @@ Analyze a PDF using a specific query file and enabling Google Search for all que
 python3 ask-llm.py --query custom_prompts.md --google-search mypaper.pdf
 ```
 
+Generate a CSV report for spreadsheet analysis:
+
+```sh
+python3 ask-llm.py --report analysis.csv document.pdf
+```
+
 Specify a custom report file and run in verbose mode:
 
 ```sh
@@ -246,7 +268,7 @@ python3 ask-llm.py --report detailed_analysis.json -v document.pdf
 - Python 3.7+
 - `rbw` (Bitwarden CLI)
 
-The script uses standard Python libraries such as `json`, `base64`, `urllib.request`, `subprocess`, `sys`, `os`, `re`, `datetime`, `pathlib`, and `argparse`. No external Python packages like `requests` or `PyPDF2` need to be installed via pip for the core functionality.
+The script uses standard Python libraries such as `json`, `base64`, `urllib.request`, `subprocess`, `sys`, `os`, `re`, `csv`, `datetime`, `pathlib`, and `argparse`. No external Python packages like `requests` or `PyPDF2` need to be installed via pip for the core functionality.
 
 ---
 

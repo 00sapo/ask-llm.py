@@ -7,6 +7,7 @@ import subprocess
 import sys
 import os
 import re
+import csv
 from datetime import datetime
 from pathlib import Path
 import argparse
@@ -343,6 +344,81 @@ class DocumentAnalyzer:
                 f"[DEBUG] JSON report saved with {len(self.results['documents'])} documents"
             )
 
+    def _save_csv_report(self):
+        """Save results to CSV file"""
+        if self.verbose:
+            print(f"[DEBUG] Saving CSV report to {self.report_file}")
+
+        if not self.results["documents"]:
+            print("Warning: No documents processed, creating empty CSV")
+            with open(self.report_file, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    ["Document", "BibTeX Key", "File Path", "Metadata Only"]
+                )
+            return
+
+        # Prepare CSV structure
+        # Columns: Document info + one column per query
+        headers = ["Document ID", "BibTeX Key", "File Path", "Metadata Only"]
+
+        # Add query columns
+        for query in self.results["metadata"]["queries"]:
+            # Truncate long query text for column header
+            query_text = (
+                query["text"][:50] + "..." if len(query["text"]) > 50 else query["text"]
+            )
+            headers.append(f"Query {query['id']}: {query_text}")
+
+        with open(self.report_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+
+            for doc in self.results["documents"]:
+                row = [
+                    doc["id"],
+                    doc["bibtex_key"],
+                    doc["file_path"],
+                    "Yes" if doc["is_metadata_only"] else "No",
+                ]
+
+                # Create a mapping of query_id to response for this document
+                query_responses = {q["query_id"]: q["response"] for q in doc["queries"]}
+
+                # Add response for each query (in order)
+                for query in self.results["metadata"]["queries"]:
+                    query_id = query["id"]
+                    response = query_responses.get(query_id, "")
+
+                    # Convert response to string format suitable for CSV
+                    if isinstance(response, dict):
+                        # For structured JSON responses, convert to compact JSON string
+                        response_str = json.dumps(response, ensure_ascii=False)
+                    elif isinstance(response, list):
+                        # For list responses, convert to compact JSON string
+                        response_str = json.dumps(response, ensure_ascii=False)
+                    else:
+                        # For string responses, use as-is but clean up newlines
+                        response_str = (
+                            str(response).replace("\n", " ").replace("\r", " ")
+                        )
+
+                    row.append(response_str)
+
+                writer.writerow(row)
+
+        if self.verbose:
+            print(
+                f"[DEBUG] CSV report saved with {len(self.results['documents'])} documents"
+            )
+
+    def _save_report(self):
+        """Save results to appropriate format based on file extension"""
+        if self.report_file.lower().endswith(".csv"):
+            self._save_csv_report()
+        else:
+            self._save_json_report()
+
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file or BibTeX metadata with multiple queries"""
         if self.verbose:
@@ -646,7 +722,7 @@ class DocumentAnalyzer:
             self.process_pdf(pdf_file)  # No bibtex_file_path needed for direct PDFs
 
         # Generate final report
-        self._save_json_report()
+        self._save_report()
 
         print("\nProcessing complete!")
         print(f"Report saved to: {self.report_file}")
@@ -684,7 +760,7 @@ def main():
         "--report",
         type=str,
         default=None,
-        help="Override report output file (default: analysis_report.json)",
+        help="Override report output file (default: analysis_report.json, use .csv extension for CSV format)",
     )
     parser.add_argument(
         "--log",
