@@ -2,7 +2,7 @@
 
 ## NAME
 
-**ask-llm.py** — Analyze PDF documents (and optionally BibTeX bibliographies) using the Gemini LLM API, producing structured, aggregated Markdown reports.
+**ask-llm.py** — Analyze PDF documents (and optionally BibTeX bibliographies) using the Gemini LLM API, producing structured JSON reports.
 
 ---
 
@@ -16,7 +16,7 @@ python3 ask-llm.py [OPTIONS] [PDF|BIB]...
 
 ## DESCRIPTION
 
-**ask-llm.py** is a Python script for batch-analyzing PDF files (and optionally BibTeX bibliographies) using Google's Gemini LLM API. It sends each PDF (or its extracted metadata if the PDF is not found) to the API with user-defined prompts and optional JSON schemas, collects structured JSON responses (if specified), and generates a Markdown report summarizing the results.
+**ask-llm.py** is a Python script for batch-analyzing PDF files (and optionally BibTeX bibliographies) using Google's Gemini LLM API. It sends each PDF (or its extracted metadata if the PDF is not found) to the API with user-defined prompts and optional JSON schemas, collects structured JSON responses (if specified), and generates a JSON report containing all results.
 
 The script supports:
 
@@ -24,7 +24,7 @@ The script supports:
 - Extraction and processing of PDFs referenced in `.bib` files. If a PDF is not found, analysis can proceed using its BibTeX metadata.
 - Multiple queries defined in a `query.md` file, each with its own parameters (e.g., model, temperature, Google Search enablement) and optional JSON output schema.
 - Google Search grounding for queries to enhance factual accuracy.
-- Aggregated reporting with summary statistics.
+- JSON output format for easy programmatic processing.
 - Logging of raw API responses.
 - Verbose output for debugging.
 - Customizable output filenames and an append mode for reports.
@@ -41,7 +41,6 @@ This is especially useful for conducting systematic surveys and producing materi
   - `rbw` (for API key retrieval).
 - **Input files (defaults):**
   - `query.md` — Contains your instruction prompts, parameters, and optional JSON schemas.
-  - `structure.json` (optional) — A default JSON schema if not specified in `query.md` or via `--structure`.
 
 ---
 
@@ -126,14 +125,51 @@ python3 ask-llm.py -v paper1.pdf
 
 (Default names, can be overridden by command-line options)
 
-- **analysis_report.md**
-  Aggregated Markdown report with per-document results for each query and summary statistics.
+- **analysis_report.json**
+  Structured JSON report containing all results organized by document and query.
 
 - **log.txt**
   Raw API responses for each processed file and query.
 
 - **processed_files.txt**
   List of processed files (or BibTeX keys for metadata-only entries) and their associated BibTeX keys.
+
+### JSON Output Structure
+
+The generated JSON report has the following structure:
+
+```json
+{
+  "metadata": {
+    "generated": "2023-12-07T10:30:00",
+    "total_documents": 3,
+    "model_used": "gemini-1.5-flash-preview-05-20",
+    "queries": [
+      {
+        "id": 1,
+        "text": "Summarize the main contributions...",
+        "parameters": {"temperature": 0.7},
+        "structure": {...}
+      }
+    ]
+  },
+  "documents": [
+    {
+      "id": 1,
+      "file_path": "paper1.pdf",
+      "bibtex_key": "smith2023",
+      "is_metadata_only": false,
+      "queries": [
+        {
+          "query_id": 1,
+          "response": {"title": "...", "summary": "..."},
+          "grounding_metadata": {...}
+        }
+      ]
+    }
+  ]
+}
+```
 
 ---
 
@@ -143,7 +179,7 @@ python3 ask-llm.py -v paper1.pdf
     PDF files and/or BibTeX files to process.
 
 - `--no-clear`
-    Do not clear output files (`analysis_report.md`, `log.txt`, `processed_files.txt`) before processing. New results will be appended.
+    Do not clear output files (`analysis_report.json`, `log.txt`, `processed_files.txt`) before processing. New results will be appended to existing JSON structure.
 
 - `--model <MODEL_IDENTIFIER>`
     Override the default Gemini model for all queries (e.g., `gemini-1.5-pro-latest`). Default is `gemini-1.5-flash-preview-05-20`. This can be overridden on a per-query basis in `query.md`.
@@ -151,11 +187,8 @@ python3 ask-llm.py -v paper1.pdf
 - `--query <QUERY_TEXT | FILE_PATH>`
     Override the query prompts. If a file path is given, it's treated like `query.md`. If a string is given, it's used as a single prompt for all documents. This overrides `query.md`.
 
-- `--structure <FILE_PATH>`
-    Override the JSON structure schema file. This applies to queries that do not have an embedded schema in `query.md`. Overrides `structure.json`.
-
 - `--report <FILE_PATH>`
-    Override the report output file (default: `analysis_report.md`).
+    Override the report output file (default: `analysis_report.json`).
 
 - `--log <FILE_PATH>`
     Override the log output file (default: `log.txt`).
@@ -197,7 +230,7 @@ python3 ask-llm.py --query custom_prompts.md --google-search mypaper.pdf
 Specify a custom report file and run in verbose mode:
 
 ```sh
-python3 ask-llm.py --report detailed_analysis.md -v document.pdf
+python3 ask-llm.py --report detailed_analysis.json -v document.pdf
 ```
 
 ---

@@ -20,7 +20,7 @@ class DocumentAnalyzer:
         self.model = "gemini-2.5-flash-preview-05-20"
         self.processed_list = "processed_files.txt"
         self.logfile = "log.txt"
-        self.report_file = "analysis_report.md"
+        self.report_file = "analysis_report.json"
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
@@ -168,14 +168,39 @@ class DocumentAnalyzer:
             print(f"Error: Invalid JSON in {filename}: {e}")
             sys.exit(1)
 
+    def _initialize_json_structure(self):
+        """Initialize the JSON output structure"""
+        self.results = {
+            "metadata": {
+                "generated": datetime.now().isoformat(),
+                "total_documents": 0,
+                "model_used": self.model,
+                "queries": [],
+            },
+            "documents": [],
+        }
+
+        # Store query information
+        for i, query_info in enumerate(self.queries):
+            query_data = {
+                "id": i + 1,
+                "text": query_info["text"],
+                "parameters": query_info["params"],
+                "structure": query_info.get("structure"),
+            }
+            self.results["metadata"]["queries"].append(query_data)
+
     def _clear_files(self):
-        """Clear or create output files"""
+        """Clear or create output files and initialize JSON structure"""
         if self.verbose:
             print("[DEBUG] Clearing output files")
-        for filename in [self.processed_list, self.logfile, self.report_file]:
+        for filename in [self.processed_list, self.logfile]:
             Path(filename).write_text("")
             if self.verbose:
                 print(f"[DEBUG] Cleared {filename}")
+
+        # Initialize JSON structure
+        self._initialize_json_structure()
 
     def _extract_bibtex_metadata(self, entry_text, bibtex_key):
         """Extract metadata from a BibTeX entry"""
@@ -305,100 +330,18 @@ class DocumentAnalyzer:
             print("[DEBUG] PDF file not found in any location")
         return None
 
-    def _write_pdf_header(self, pdf_path, bibtex_key):
-        """Write PDF header to report"""
+    def _save_json_report(self):
+        """Save results to JSON file"""
         if self.verbose:
-            print(f"[DEBUG] Writing PDF header to report for {pdf_path}")
+            print(f"[DEBUG] Saving JSON report to {self.report_file}")
 
-        with open(self.report_file, "a", encoding="utf-8") as f:
-            f.write(f"\n## {os.path.basename(pdf_path)}\n\n")
-            f.write(f"**File:** `{pdf_path}`\n")
-            if bibtex_key:
-                f.write(f"**BibTeX Key:** `{bibtex_key}`\n")
+        with open(self.report_file, "w", encoding="utf-8") as f:
+            json.dump(self.results, f, indent=2, ensure_ascii=False)
 
-    def _write_metadata_header(self, metadata, original_pdf_path):
-        """Write metadata header to report"""
         if self.verbose:
             print(
-                f"[DEBUG] Writing metadata header to report for {metadata['bibtex_key']}"
+                f"[DEBUG] JSON report saved with {len(self.results['documents'])} documents"
             )
-
-        with open(self.report_file, "a", encoding="utf-8") as f:
-            f.write(
-                f"\n## {metadata.get('title', 'Unknown Title')} (Metadata Only)\n\n"
-            )
-            f.write(f"**Original PDF Path:** `{original_pdf_path}` *(not found)*\n")
-            f.write(f"**BibTeX Key:** `{metadata['bibtex_key']}`\n")
-            f.write(
-                "**Note:** PDF file not available, analysis based on bibliographic metadata only.\n\n"
-            )
-
-    def _add_query_to_report(self, response_info):
-        """Add a single query response to the report immediately"""
-        if self.verbose:
-            print(f"[DEBUG] Writing query {response_info['query_index']} to report")
-
-        with open(self.report_file, "a", encoding="utf-8") as f:
-            f.write(f"\n### Query {response_info['query_index']}\n\n")
-            f.write("**Query:**\n```\n")
-            f.write(response_info["query_text"])
-            f.write("\n```\n\n")
-
-            if response_info["params"]:
-                f.write("**Parameters:**\n")
-                for key, value in response_info["params"].items():
-                    f.write(f"- {key}: {value}\n")
-                f.write("\n")
-
-            if response_info.get("structure"):
-                f.write("**Structure:**\n```json\n")
-                f.write(json.dumps(response_info["structure"], indent=2))
-                f.write("\n```\n\n")
-
-            f.write("**Response:**\n")
-            if response_info.get("structure"):
-                f.write("```json\n")
-                f.write(response_info["response"])
-                f.write("\n```\n\n")
-            else:
-                f.write(response_info["response"])
-                f.write("\n\n")
-
-            # Add grounding information if available
-            if response_info.get("grounding_metadata"):
-                grounding = response_info["grounding_metadata"]
-                f.write("**Grounding Information:**\n")
-
-                # Show search queries used
-                if "webSearchQueries" in grounding:
-                    f.write("*Search Queries:* ")
-                    f.write(", ".join(f"`{q}`" for q in grounding["webSearchQueries"]))
-                    f.write("\n\n")
-
-                # Show grounding sources
-                if "groundingChunks" in grounding:
-                    f.write("*Sources:*\n")
-                    for chunk in grounding["groundingChunks"]:
-                        if "web" in chunk:
-                            web_info = chunk["web"]
-                            title = web_info.get("title", "Unknown")
-                            uri = web_info.get("uri", "#")
-                            f.write(f"- [{title}]({uri})\n")
-                    f.write("\n")
-
-                # Show search entry point (Google Search suggestions)
-                if (
-                    "searchEntryPoint" in grounding
-                    and "renderedContent" in grounding["searchEntryPoint"]
-                ):
-                    f.write(
-                        "*Google Search Suggestions available in response metadata*\n\n"
-                    )
-
-    def _close_pdf_section(self):
-        """Close PDF section in report"""
-        with open(self.report_file, "a", encoding="utf-8") as f:
-            f.write("---\n\n")
 
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file or BibTeX metadata with multiple queries"""
@@ -441,11 +384,14 @@ class DocumentAnalyzer:
                 print(f"File not found: {pdf_path}", file=sys.stderr)
                 return False
 
-        # Write header to report
-        if actual_path:
-            self._write_pdf_header(actual_path, bibtex_key)
-        else:
-            self._write_metadata_header(metadata, pdf_path)
+        # Initialize document structure
+        document_data = {
+            "id": len(self.results["documents"]) + 1,
+            "file_path": actual_path or pdf_path,
+            "bibtex_key": bibtex_key,
+            "is_metadata_only": actual_path is None,
+            "queries": [],
+        }
 
         successful_queries = 0
 
@@ -578,21 +524,28 @@ class DocumentAnalyzer:
                                 f"[DEBUG] Found {len(grounding_metadata['groundingChunks'])} grounding chunks"
                             )
 
-                    response_info = {
-                        "query_index": i + 1,
-                        "query_text": query_info["text"],
-                        "params": query_info["params"],
-                        "structure": query_info.get("structure"),
-                        "response": response_content,
+                    # Parse JSON response if structure was requested
+                    parsed_response = response_content
+                    if query_structure:
+                        try:
+                            parsed_response = json.loads(response_content)
+                        except json.JSONDecodeError:
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Failed to parse JSON response for query {i + 1}"
+                                )
+
+                    query_result = {
+                        "query_id": i + 1,
+                        "response": parsed_response,
                         "grounding_metadata": grounding_metadata,
                     }
 
-                    # Write this query's response immediately to report
-                    self._add_query_to_report(response_info)
+                    document_data["queries"].append(query_result)
                     successful_queries += 1
 
                     if self.verbose:
-                        print(f"[DEBUG] Successfully processed and wrote query {i + 1}")
+                        print(f"[DEBUG] Successfully processed query {i + 1}")
 
                 except (KeyError, IndexError):
                     print(
@@ -635,10 +588,10 @@ class DocumentAnalyzer:
                     print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
                 continue
 
-        # Close section in report
-        self._close_pdf_section()
-
         if successful_queries > 0:
+            self.results["documents"].append(document_data)
+            self.results["metadata"]["total_documents"] += 1
+
             if self.verbose:
                 print(
                     f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or bibtex_key}"
@@ -659,143 +612,6 @@ class DocumentAnalyzer:
         if self.verbose:
             print(f"[DEBUG] No responses processed for {actual_path or bibtex_key}")
         return False
-
-    def _generate_summary(self):
-        """Generate summary report header and aggregated analysis"""
-        if self.verbose:
-            print("[DEBUG] Generating summary report")
-
-        try:
-            with open(self.processed_list, "r") as f:
-                total_processed = len(f.readlines())
-        except FileNotFoundError:
-            total_processed = 0
-
-        if self.verbose:
-            print(f"[DEBUG] Total processed files: {total_processed}")
-
-        # Create header
-        header = f"""# Document Analysis Report
-
-**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-**Total Documents Processed:** {total_processed}
-**Total Queries:** {len(self.queries)}
-**Model Used:** {self.model}
-
-## Queries Used
-
-"""
-
-        for i, query_info in enumerate(self.queries):
-            header += f"### Query {i + 1}\n\n"
-            header += "```\n"
-            header += query_info["text"]
-            header += "\n```\n\n"
-            if query_info["params"]:
-                header += "**Parameters:**\n"
-                for key, value in query_info["params"].items():
-                    header += f"- {key}: {value}\n"
-                header += "\n"
-            if query_info.get("structure"):
-                header += "**Structure:**\n```json\n"
-                header += json.dumps(query_info["structure"], indent=2)
-                header += "\n```\n\n"
-
-        header += "## Individual Results\n\n"
-
-        # Read existing report content and write combined content
-        try:
-            with open(self.report_file, "r", encoding="utf-8") as f:
-                existing_content = f.read()
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Read existing report content: {len(existing_content)} characters"
-                    )
-        except FileNotFoundError:
-            existing_content = ""
-
-        with open(self.report_file, "w", encoding="utf-8") as f:
-            f.write(header)
-            f.write(existing_content)
-
-        # Generate aggregated analysis if we have results
-        if total_processed > 0:
-            if self.verbose:
-                print("[DEBUG] Generating aggregated analysis")
-            self._generate_aggregated_analysis()
-
-    def _generate_aggregated_analysis(self):
-        """Generate aggregated analysis section"""
-        if self.verbose:
-            print("[DEBUG] Starting aggregated analysis generation")
-
-        with open(self.report_file, "a", encoding="utf-8") as f:
-            f.write("## Aggregated Analysis\n\n")
-
-        # Extract JSON responses for analysis
-        try:
-            with open(self.report_file, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Find all JSON blocks
-            json_blocks = re.findall(r"```json\n(.*?)\n```", content, re.DOTALL)
-
-            if self.verbose:
-                print(f"[DEBUG] Found {len(json_blocks)} JSON blocks")
-
-            if json_blocks:
-                # Parse JSON responses
-                responses = []
-                for block_idx, block in enumerate(json_blocks):
-                    try:
-                        responses.append(json.loads(block))
-                        if self.verbose:
-                            print(f"[DEBUG] Parsed JSON block {block_idx + 1}")
-                    except json.JSONDecodeError:
-                        if self.verbose:
-                            print(f"[DEBUG] Failed to parse JSON block {block_idx + 1}")
-                        continue
-
-                if responses:
-                    if self.verbose:
-                        print(
-                            f"[DEBUG] Analyzing {len(responses)} valid JSON responses"
-                        )
-
-                    with open(self.report_file, "a", encoding="utf-8") as f:
-                        f.write("### Summary Statistics\n\n")
-
-                        # Count keywords (if present in structure)
-                        all_keywords = []
-                        for response in responses:
-                            if "keywords" in response and isinstance(
-                                response["keywords"], list
-                            ):
-                                all_keywords.extend(response["keywords"])
-
-                        if all_keywords:
-                            if self.verbose:
-                                print(
-                                    f"[DEBUG] Found {len(all_keywords)} total keywords"
-                                )
-
-                            keyword_counts = {}
-                            for keyword in all_keywords:
-                                keyword_counts[keyword] = (
-                                    keyword_counts.get(keyword, 0) + 1
-                                )
-
-                            f.write("**Keyword Distribution:**\n\n")
-                            for keyword, count in sorted(
-                                keyword_counts.items(), key=lambda x: x[1], reverse=True
-                            ):
-                                f.write(f"- {keyword}: {count}\n")
-                            f.write("\n")
-
-        except Exception as e:
-            print(f"Warning: Could not generate aggregated analysis: {e}")
-            if self.verbose:
-                print(f"[DEBUG] Aggregated analysis exception: {type(e).__name__}: {e}")
 
     def process_files(self, files):
         """Main processing logic"""
@@ -830,7 +646,7 @@ class DocumentAnalyzer:
             self.process_pdf(pdf_file)  # No bibtex_file_path needed for direct PDFs
 
         # Generate final report
-        self._generate_summary()
+        self._save_json_report()
 
         print("\nProcessing complete!")
         print(f"Report saved to: {self.report_file}")
@@ -868,7 +684,7 @@ def main():
         "--report",
         type=str,
         default=None,
-        help="Override report output file (default: analysis_report.md)",
+        help="Override report output file (default: analysis_report.json)",
     )
     parser.add_argument(
         "--log",
@@ -954,10 +770,23 @@ def main():
                         f"[DEBUG] Processed list file overridden to: {args.processed_list}"
                     )
             if args.no_clear:
-                # Override _clear_files to do nothing
-                self._clear_files = lambda: None
-                if self.verbose:
-                    print("[DEBUG] File clearing disabled")
+                # Load existing JSON if it exists
+                if os.path.exists(self.report_file):
+                    try:
+                        with open(self.report_file, "r", encoding="utf-8") as f:
+                            self.results = json.load(f)
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Loaded existing JSON with {len(self.results['documents'])} documents"
+                            )
+                    except (json.JSONDecodeError, FileNotFoundError):
+                        if self.verbose:
+                            print(
+                                "[DEBUG] Could not load existing JSON, starting fresh"
+                            )
+                        self._initialize_json_structure()
+                else:
+                    self._initialize_json_structure()
 
     analyzer = CLIAnalyzer()
     analyzer.process_files(args.files)
