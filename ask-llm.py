@@ -680,6 +680,12 @@ class DocumentAnalyzer:
                 else:
                     f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
 
+            # Flush JSON output after each document
+            self._save_report()
+
+            if self.verbose:
+                print(f"[DEBUG] Flushed results to {self.report_file}")
+
             print(
                 f"Successfully processed: {actual_path or f'metadata for {bibtex_key}'}"
             )
@@ -721,11 +727,8 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Processing individual PDF: {pdf_file}")
             self.process_pdf(pdf_file)  # No bibtex_file_path needed for direct PDFs
 
-        # Generate final report
-        self._save_report()
-
         print("\nProcessing complete!")
-        print(f"Report saved to: {self.report_file}")
+        print(f"Final report saved to: {self.report_file}")
         print(f"Log saved to: {self.logfile}")
         print(f"Processed files list: {self.processed_list}")
 
