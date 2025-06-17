@@ -99,16 +99,15 @@ python3 ask-llm.py -v paper1.pdf
   - **Model Name:** `Model-Name: <model_identifier>` (e.g., `gemini-1.5-pro-latest`)
   - **Temperature:** `Temperature: <float_value>` (e.g., `0.5`)
   - **Google Search:** `Google-Search: <true|false>`
-  - **JSON Output Structure:** An embedded JSON code block (```json ...```) defining the desired output schema.
+  - **JSON Output Structure:** An embedded JSON code block (```json ... ```) defining the desired output schema.
   The rest of the text in a query section is treated as the prompt.
 
   Example `query.md`:
-
   ```markdown
   Model-Name: gemini-1.5-flash-latest
   Temperature: 0.7
   Google-Search: true
-  \`\`\`json
+  ```json
   {
     "type": "object",
     "properties": {
@@ -117,14 +116,14 @@ python3 ask-llm.py -v paper1.pdf
     },
     "required": ["main_finding"]
   }
-  \`\`\`
+  ```
 
   Summarize the main contributions of this paper and extract up to 5 relevant keywords.
 
   ===
   Google-Search: false
   Identify the core methodology used in this research.
-
+  ```
 
 ---
 
@@ -150,7 +149,7 @@ The generated JSON report has the following structure:
   "metadata": {
     "generated": "2023-12-07T10:30:00",
     "total_documents": 3,
-    "model_used": "gemini-1.5-flash-preview-05-20",
+    "model_used": "gemini-2.5-flash-preview-05-20",
     "queries": [
       {
         "id": 1,
@@ -198,7 +197,7 @@ When CSV format is specified (by using a `.csv` file extension), the output will
     Do not clear output files (`analysis_report.json`, `log.txt`, `processed_files.txt`) before processing. New results will be appended to existing JSON structure.
 
 - `--model <MODEL_IDENTIFIER>`
-    Override the default Gemini model for all queries (e.g., `gemini-1.5-pro-latest`). Default is `gemini-1.5-flash-preview-05-20`. This can be overridden on a per-query basis in `query.md`.
+    Override the default Gemini model for all queries (e.g., `gemini-1.5-pro-latest`). Default is `gemini-2.5-flash-preview-05-20`. This can be overridden on a per-query basis in `query.md`.
 
 - `--query <QUERY_TEXT | FILE_PATH>`
     Override the query prompts. If a file path is given, it's treated like `query.md`. If a string is given, it's used as a single prompt for all documents. This overrides `query.md`.
