@@ -13,7 +13,6 @@ limit: 100
 model-name: gemini-2.5-flash
 temperature: 0.3
 google-search: false
-filter-on: relevance
 
 Is this paper describing any practical algorithm for computing the similarity between music excerpts or texts in the context of music?
 
@@ -23,8 +22,7 @@ Is this paper describing any practical algorithm for computing the similarity be
   "properties": {
     "relevance": {
       "type": "boolean",
-      "description": "Indicates whether the paper describes a practical algorithm for
-      computing similarity between music excerpts or texts in the context of music"
+      "description": "Indicates whether the paper describes a practical algorithm for computing similarity between music excerpts or texts in the context of music"
     }
   },
   "required": [
@@ -32,6 +30,8 @@ Is this paper describing any practical algorithm for computing the similarity be
   ]
 }
 ```
+
+filter-on: relevance
 
 ===
 model-name: gemini-2.5-pro-preview-05-06
