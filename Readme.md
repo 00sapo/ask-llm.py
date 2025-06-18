@@ -71,43 +71,50 @@ You should set up a `query.md` file, or use one of the examples provided in the 
 directory of this repo. The following is the CLI interface.
 
 ```sh
- Usage: python -m src.ask_llm.cli [OPTIONS] [FILES]... COMMAND [ARGS]...
+ Usage: ask-llm [OPTIONS] [FILES]... COMMAND [ARGS]...
 
  Process PDF files and BibTeX bibliographies using the Gemini API with structured output.
 
 
-╭─ Arguments ─────────────────────────────────────────────────────────────────────────────╮
-│   files      [FILES]...  PDF files and/or BibTeX files to process [default: None]       │
-╰─────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ───────────────────────────────────────────────────────────────────────────────╮
-│ --no-clear                       Do not clear output files before processing (append    │
-│                                  mode)                                                  │
-│ --query-file               PATH  Override query file (default: query.md)                │
-│                                  [default: None]                                        │
-│ --report                   PATH  Override report output file (default:                  │
-│                                  analysis_report.json, use .csv extension for CSV       │
-│                                  format)                                                │
-│                                  [default: None]                                        │
-│ --log                      PATH  Override log output file (default: log.txt)            │
-│                                  [default: None]                                        │
-│ --processed-list           PATH  Override processed files list output (default:         │
-│                                  processed_files.txt)                                   │
-│                                  [default: None]                                        │
-│ --api-key                  TEXT  Override Gemini API key (default: from GEMINI_API_KEY  │
-│                                  env var)                                               │
-│                                  [default: None]                                        │
-│ --api-key-command          TEXT  Override command to retrieve API key (default: rbw get │
-│                                  gemini_key)                                            │
-│                                  [default: None]                                        │
-│ --base-url                 TEXT  Override Gemini API base URL (default:                 │
-│                                  https://generativelanguage.googleapis.com/v1beta)      │
-│                                  [default: None]                                        │
-│ --verbose          -v            Enable verbose debug output                            │
-│ --help                           Show this message and exit.                            │
-╰─────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ──────────────────────────────────────────────────────────────────────────────╮
-│ version   Show version information.                                                     │
-╰─────────────────────────────────────────────────────────────────────────────────────────╯
+ Process PDF files and BibTeX bibliographies using the Gemini API with structured
+ output.
+
+
+╭─ Arguments ─────────────────────────────────────────────────────────────────────╮
+│   files      [FILES]...  PDF files and/or BibTeX files to process (optional     │
+│                          when using Semantic Scholar)                           │
+│                          [default: None]                                        │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ───────────────────────────────────────────────────────────────────────╮
+│ --no-clear                       Do not clear output files before processing    │
+│                                  (append mode)                                  │
+│ --no-pdf-download                Disable automatic PDF downloading for missing  │
+│                                  files                                          │
+│ --query-file               PATH  Override query file (default: query.md)        │
+│                                  [default: None]                                │
+│ --report                   PATH  Override report output file (default:          │
+│                                  analysis_report.json and analysis_report.csv)  │
+│                                  [default: None]                                │
+│ --log                      PATH  Override log output file (default: log.txt)    │
+│                                  [default: None]                                │
+│ --processed-list           PATH  Override processed files list output (default: │
+│                                  processed_files.txt)                           │
+│                                  [default: None]                                │
+│ --api-key                  TEXT  Override Gemini API key (default: from         │
+│                                  GEMINI_API_KEY env var)                        │
+│                                  [default: None]                                │
+│ --api-key-command          TEXT  Override command to retrieve API key (default: │
+│                                  rbw get gemini_key)                            │
+│                                  [default: None]                                │
+│ --base-url                 TEXT  Override Gemini API base URL (default:         │
+│                                  https://generativelanguage.googleapis.com/v1b… │
+│                                  [default: None]                                │
+│ --verbose          -v            Enable verbose debug output                    │
+│ --help                           Show this message and exit.                    │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ──────────────────────────────────────────────────────────────────────╮
+│ version   Show version information.                                             │
+╰─────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Basic PDF Analysis
