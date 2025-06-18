@@ -180,8 +180,11 @@ ask-llm --report results.csv paper1.pdf
   on Semantic Scholar. If enabled, no LLM will be involved and query text will be used to search
   papers on Semantic Scholar. The retrieved papers will be merged to the provided bibtex or PDF
   files and used in subsequent queries. You can use any further search option and query logical
-  operators as described in the Semantic Scholar API [docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search).
-  By default, results will be sorted by citation count.
+  operators as described in the Semantic Scholar API
+  [docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search).
+  By default, results will be sorted by citation count. Since Semantic Scholar doesn't expose the
+  PDF urls that are viewable from the html pages, we will search for PDF files using duckduckgo. Automatic download of PDF
+  files can be disabled with `--no-pdf-download`.
 
   Options are kept for the subsequent queries, so you can specify them only once
   at the beginning, change them for a certain query, and then revert to the previous value
@@ -212,6 +215,12 @@ ask-llm --report results.csv paper1.pdf
   ```
 
   Further examples can be found in the `prompt-lib/` directory of this repository.
+
+- **bibtex**: Bibtex exported by Zotero, using `include files` option are supported. This means that
+  PDF file paths can stay in a `file` field relative to the BibTeX file. If no PDF file is found,
+  duckduckgo will be used to search for the PDF file using the BibTeX title and authors.
+  If no PDF file is found, the metadata only will be used for analysis. Automatic download of PDF
+  files can be disabled with `--no-pdf-download`.
 
 ---
 

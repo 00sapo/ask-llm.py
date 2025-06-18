@@ -4,6 +4,7 @@ import json
 import base64
 import sys
 import os
+import tempfile
 from pathlib import Path
 
 from .config import ConfigManager
@@ -14,13 +15,19 @@ from .semantic_scholar import SemanticScholarClient
 
 
 class DocumentAnalyzer:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, auto_download_pdfs=True):
         self.verbose = verbose
+        self.auto_download_pdfs = auto_download_pdfs
         self.config = ConfigManager(verbose=verbose)
-        self.bibtex_processor = BibtexProcessor(verbose=verbose)
+        self.bibtex_processor = BibtexProcessor(
+            verbose=verbose, auto_download_pdfs=auto_download_pdfs
+        )
         self.api_client = GeminiAPIClient(verbose=verbose)
         self.report_manager = ReportManager(verbose=verbose)
-        self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
+        self.semantic_scholar_client = SemanticScholarClient(
+            verbose=verbose, auto_download_pdfs=auto_download_pdfs
+        )
+        self.downloaded_pdfs = []  # Track downloaded PDFs for cleanup
 
         # Initialize with default configuration
         self.processed_list = "processed_files.txt"
@@ -31,6 +38,7 @@ class DocumentAnalyzer:
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
+            print(f"[DEBUG] Auto PDF download: {self.auto_download_pdfs}")
 
         # Load configuration
         self.queries = self.config.load_queries("query.md")
@@ -134,6 +142,10 @@ class DocumentAnalyzer:
                     all_bibtex_entries.append(bibtex_entry)
                     entry_counter += 1
 
+                    # Track downloaded PDFs for cleanup
+                    if paper.get("downloaded_pdf_path"):
+                        self.downloaded_pdfs.append(paper["downloaded_pdf_path"])
+
                 if self.verbose:
                     print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
 
@@ -201,12 +213,18 @@ class DocumentAnalyzer:
         actual_path = None
         pdf_data = None
         metadata = None
+        is_temp_file = False
 
         if pdf_path:
             actual_path = self._find_pdf_file(
                 pdf_path,
                 os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
             )
+
+            # Check if this is a temporary downloaded file
+            if actual_path and tempfile.gettempdir() in actual_path:
+                is_temp_file = True
+                self.downloaded_pdfs.append(actual_path)
 
         if actual_path:
             # Process PDF
@@ -512,6 +530,13 @@ class DocumentAnalyzer:
                         temp_merged_file
                     )
                     for mapping in pdf_mappings:
+                        # Track any downloaded PDFs
+                        if (
+                            mapping["pdf_path"]
+                            and tempfile.gettempdir() in mapping["pdf_path"]
+                        ):
+                            self.downloaded_pdfs.append(mapping["pdf_path"])
+
                         self.process_pdf(
                             mapping["pdf_path"],
                             mapping["bibtex_key"],
@@ -538,6 +563,7 @@ class DocumentAnalyzer:
                     temp_ss_file
                 )
                 for mapping in pdf_mappings:
+                    # Track any downloaded PDFs (these are already tracked from semantic scholar search)
                     self.process_pdf(
                         mapping["pdf_path"],
                         mapping["bibtex_key"],
@@ -558,6 +584,13 @@ class DocumentAnalyzer:
                 )
 
                 for mapping in pdf_mappings:
+                    # Track any downloaded PDFs
+                    if (
+                        mapping["pdf_path"]
+                        and tempfile.gettempdir() in mapping["pdf_path"]
+                    ):
+                        self.downloaded_pdfs.append(mapping["pdf_path"])
+
                     self.process_pdf(
                         mapping["pdf_path"],
                         mapping["bibtex_key"],
@@ -589,6 +622,18 @@ class DocumentAnalyzer:
 
         if self.filtered_out_documents:
             print("Filtered out documents: filtered_out_documents.txt")
+
+        # Clean up downloaded PDFs
+        if self.downloaded_pdfs:
+            if self.verbose:
+                print(
+                    f"[DEBUG] Cleaning up {len(self.downloaded_pdfs)} downloaded PDFs"
+                )
+
+            from .pdf_search import PDFSearcher
+
+            pdf_searcher = PDFSearcher(verbose=self.verbose, enabled=True)
+            pdf_searcher.cleanup_temp_files(self.downloaded_pdfs)
 
         # Clean up temporary files if they exist
         temp_files = ["semantic_scholar_results.bib"] + [

@@ -31,6 +31,11 @@ def main(
         "--no-clear",
         help="Do not clear output files before processing (append mode)",
     ),
+    no_pdf_download: bool = typer.Option(
+        False,
+        "--no-pdf-download",
+        help="Disable automatic PDF downloading for missing files",
+    ),
     query_file: Optional[Path] = typer.Option(
         None,
         "--query-file",
@@ -151,6 +156,8 @@ def main(
                 console.print(
                     "[DEBUG] Running with Semantic Scholar queries only", style="dim"
                 )
+            if no_pdf_download:
+                console.print("[DEBUG] PDF download disabled", style="dim")
 
         # Convert Path objects to strings for compatibility (files might be empty)
         file_paths = [str(f) for f in files] if files else []
@@ -158,7 +165,9 @@ def main(
         # Patch DocumentAnalyzer with CLI overrides
         class CLIAnalyzer(DocumentAnalyzer):
             def __init__(self):
-                super().__init__(verbose=verbose)
+                # Pass no_pdf_download option to parent constructor
+                auto_download_pdfs = not no_pdf_download
+                super().__init__(verbose=verbose, auto_download_pdfs=auto_download_pdfs)
 
                 # Override config settings with CLI options
                 if api_key:

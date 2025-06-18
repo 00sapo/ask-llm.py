@@ -6,16 +6,26 @@ from typing import Dict, Any, List
 
 
 class SemanticScholarClient:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, auto_download_pdfs=True):
         self.verbose = verbose
+        self.auto_download_pdfs = auto_download_pdfs
         self.base_url = "https://api.semanticscholar.org/graph/v1"
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
+
+        # Initialize PDF searcher only if needed
+        if self.auto_download_pdfs:
+            from .pdf_search import PDFSearcher
+
+            self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=auto_download_pdfs)
+        else:
+            self.pdf_searcher = None
 
         if self.verbose:
             print(
                 f"[DEBUG] Initialized Semantic Scholar client with base URL: {self.base_url}"
             )
+            print(f"[DEBUG] Auto PDF download: {self.auto_download_pdfs}")
 
     def search_papers(
         self, query: str, search_params: Dict[str, Any] = None
@@ -53,6 +63,10 @@ class SemanticScholarClient:
             if self.verbose:
                 print(f"[DEBUG] Found {len(papers)} papers")
 
+            # Search for PDFs for papers without URLs
+            if self.auto_download_pdfs and self.pdf_searcher:
+                papers = self._enhance_papers_with_pdfs(papers)
+
             return papers
 
         except requests.exceptions.RequestException as e:
@@ -63,6 +77,47 @@ class SemanticScholarClient:
             if self.verbose:
                 print(f"[DEBUG] JSON decode error: {e}")
             raise Exception(f"Failed to parse Semantic Scholar response: {e}")
+
+    def _enhance_papers_with_pdfs(
+        self, papers: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Search for PDFs for papers that don't have open access URLs"""
+        enhanced_papers = []
+
+        for paper in papers:
+            # Check if paper already has a PDF URL
+            has_pdf = False
+            open_access_pdf = paper.get("openAccessPdf")
+            if open_access_pdf and open_access_pdf.get("url"):
+                has_pdf = True
+
+            if not has_pdf:
+                # Extract title and authors for search
+                title = paper.get("title", "")
+                authors = paper.get("authors", [])
+                authors_str = " and ".join(
+                    [author.get("name", "") for author in authors[:2]]
+                )  # Use first 2 authors
+
+                if title:
+                    if self.verbose:
+                        print(f"[DEBUG] Searching for PDF: {title[:60]}...")
+
+                    pdf_path = self.pdf_searcher.search_pdf(title, authors_str)
+                    if pdf_path:
+                        # Add the downloaded PDF path to the paper data
+                        paper["downloaded_pdf_path"] = pdf_path
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Found and downloaded PDF for: {title[:60]}..."
+                            )
+                    else:
+                        if self.verbose:
+                            print(f"[DEBUG] No PDF found for: {title[:60]}...")
+
+            enhanced_papers.append(paper)
+
+        return enhanced_papers
 
     def create_bibtex_entry(self, paper: Dict[str, Any], entry_key: str = None) -> str:
         """Create a BibTeX entry from a Semantic Scholar paper"""
@@ -99,12 +154,23 @@ class SemanticScholarClient:
             ]
         )
 
-        # Get URL - prefer open access PDF, then regular URL
+        # Get URL - prefer downloaded PDF, then open access PDF, then regular URL
         url = ""
-        open_access_pdf = paper.get("openAccessPdf")
-        if open_access_pdf and open_access_pdf.get("url"):
-            url = open_access_pdf["url"]
-        else:
+        file_field = ""
+
+        # Check for downloaded PDF first
+        downloaded_pdf = paper.get("downloaded_pdf_path")
+        if downloaded_pdf:
+            file_field = f"{downloaded_pdf}:application/pdf"
+
+        # Then check for open access PDF
+        if not file_field:
+            open_access_pdf = paper.get("openAccessPdf")
+            if open_access_pdf and open_access_pdf.get("url"):
+                url = open_access_pdf["url"]
+
+        # Finally check for regular URL
+        if not url and not file_field:
             url = paper.get("url", "")
 
         # Get DOI if available
@@ -138,7 +204,9 @@ class SemanticScholarClient:
             bibtex_lines.append(f"  journal = {{{clean_venue}}},")
         if doi:
             bibtex_lines.append(f"  doi = {{{doi}}},")
-        if url:
+        if file_field:
+            bibtex_lines.append(f"  file = {{{file_field}}},")
+        elif url:
             bibtex_lines.append(f"  url = {{{url}}},")
 
         # Add citation count if available

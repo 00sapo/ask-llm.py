@@ -10,8 +10,17 @@ from bibtexparser.customization import convert_to_unicode, author, editor
 
 
 class BibtexProcessor:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, auto_download_pdfs=True):
         self.verbose = verbose
+        self.auto_download_pdfs = auto_download_pdfs
+
+        # Initialize PDF searcher only if needed
+        if self.auto_download_pdfs:
+            from .pdf_search import PDFSearcher
+
+            self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=auto_download_pdfs)
+        else:
+            self.pdf_searcher = None
 
         # Configure bibtexparser
         self.parser = BibTexParser(common_strings=True)
@@ -156,6 +165,26 @@ class BibtexProcessor:
                         pdf_path = pdf_match.group(1)
                         if self.verbose:
                             print(f"[DEBUG] Found PDF: {pdf_path} for key {bibtex_key}")
+                elif self.auto_download_pdfs and self.pdf_searcher:
+                    # No file field, try to search for PDF
+                    title = entry.get("title", "")
+                    authors = entry.get("author", "")
+
+                    if title:
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] No file field found for {bibtex_key}, searching for PDF..."
+                            )
+
+                        pdf_path = self.pdf_searcher.search_pdf(title, authors)
+                        if pdf_path:
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Downloaded PDF for {bibtex_key}: {pdf_path}"
+                                )
+                        else:
+                            if self.verbose:
+                                print(f"[DEBUG] No PDF found for {bibtex_key}")
 
                 # Reconstruct entry text for metadata extraction
                 entry_text = self._reconstruct_entry_text(entry)
@@ -196,7 +225,7 @@ class BibtexProcessor:
         return "\n".join(lines)
 
     def _extract_pdfs_regex(self, bibtex_file: str) -> List[Dict[str, Any]]:
-        """Fallback regex-based PDF extraction"""
+        """Fallback regex-based PDF extraction with PDF search"""
         try:
             with open(bibtex_file, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -231,6 +260,9 @@ class BibtexProcessor:
 
             # Look for file field
             pdf_path = None
+            title = ""
+            authors = ""
+
             for line in lines:
                 file_match = re.search(r'file\s*=\s*["{]([^"}]+)', line)
                 if file_match:
@@ -242,6 +274,34 @@ class BibtexProcessor:
                         if self.verbose:
                             print(f"[DEBUG] Found PDF: {pdf_path} for key {bibtex_key}")
                         break
+
+                # Extract title and authors for potential PDF search
+                title_match = re.search(
+                    r'title\s*=\s*["{]([^"}]+)', line, re.IGNORECASE
+                )
+                if title_match:
+                    title = title_match.group(1)
+
+                author_match = re.search(
+                    r'author\s*=\s*["{]([^"}]+)', line, re.IGNORECASE
+                )
+                if author_match:
+                    authors = author_match.group(1)
+
+            # If no file field found and auto download is enabled, search for PDF
+            if not pdf_path and self.auto_download_pdfs and self.pdf_searcher and title:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] No file field found for {bibtex_key}, searching for PDF..."
+                    )
+
+                pdf_path = self.pdf_searcher.search_pdf(title, authors)
+                if pdf_path:
+                    if self.verbose:
+                        print(f"[DEBUG] Downloaded PDF for {bibtex_key}: {pdf_path}")
+                else:
+                    if self.verbose:
+                        print(f"[DEBUG] No PDF found for {bibtex_key}")
 
             # Store mapping with full entry text
             pdf_mappings.append(
