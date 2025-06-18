@@ -121,6 +121,56 @@ class BibtexProcessor:
 
         return "\n".join(parts)
 
+    def update_bibtex_with_urls(
+        self, bibtex_file: str, url_mappings: Dict[str, str]
+    ) -> int:
+        """Update BibTeX file with discovered PDF URLs"""
+        if self.verbose:
+            print(
+                f"[DEBUG] Updating BibTeX file {bibtex_file} with {len(url_mappings)} URLs"
+            )
+
+        try:
+            # Read original file
+            with open(bibtex_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Parse with bibtexparser
+            bib_database = bibtexparser.loads(content, parser=self.parser)
+
+            updated_count = 0
+            for entry in bib_database.entries:
+                bibtex_key = entry.get("ID", "")
+                if bibtex_key in url_mappings:
+                    discovered_url = url_mappings[bibtex_key]
+
+                    # Only add URL if not already present
+                    if "url" not in entry or not entry["url"].strip():
+                        entry["url"] = discovered_url
+                        updated_count += 1
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Added URL to {bibtex_key}: {discovered_url}"
+                            )
+
+            # Write back to file if we made updates
+            if updated_count > 0:
+                with open(bibtex_file, "w", encoding="utf-8") as f:
+                    bibtexparser.dump(bib_database, f)
+
+                if self.verbose:
+                    print(f"[DEBUG] Updated {updated_count} entries in {bibtex_file}")
+
+                return updated_count
+            else:
+                if self.verbose:
+                    print(f"[DEBUG] No updates needed for {bibtex_file}")
+                return 0
+
+        except Exception as e:
+            print(f"Warning: Could not update BibTeX file {bibtex_file}: {e}")
+            return 0
+
     def extract_pdfs_from_bibtex(self, bibtex_file: str) -> List[Dict[str, Any]]:
         """Extract PDF paths and URLs from BibTeX file"""
         if self.verbose:

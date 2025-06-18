@@ -38,26 +38,15 @@ class ReportManager:
     def add_document(self, document_data):
         """Add a document to the results"""
 
-        # Extract title and authors from document data
+        # Extract title and authors from BibTeX metadata if available
         title = ""
         authors = ""
 
-        # Look through query responses for title/author information
-        for query_result in document_data.get("queries", []):
-            response = query_result.get("response", {})
-            if isinstance(response, dict):
-                # Check for common title fields
-                if "title" in response and response["title"]:
-                    title = response["title"]
-                # Check for common author fields
-                if "authors" in response and response["authors"]:
-                    authors = response["authors"]
-                elif "author" in response and response["author"]:
-                    authors = response["author"]
-
-                # Break once we find title (authors are optional)
-                if title:
-                    break
+        # Get BibTeX metadata from document_data if it was stored during processing
+        bibtex_metadata = document_data.get("bibtex_metadata", {})
+        if bibtex_metadata:
+            title = bibtex_metadata.get("title", "")
+            authors = bibtex_metadata.get("author", "")
 
         # Add title, authors, and Google Scholar link to document data
         document_data["title"] = title

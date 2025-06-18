@@ -171,6 +171,23 @@ class DocumentAnalyzer:
             )
         return True  # Continue processing
 
+    def _track_discovered_url(self, bibtex_key: str, discovered_urls: dict):
+        """Track discovered URLs for later BibTeX update"""
+        # Check if we discovered a URL for this document
+        for doc in self.report_manager.results["documents"]:
+            if doc["bibtex_key"] == bibtex_key and doc.get("pdf_source") in [
+                "searched_url",
+                "searched_download",
+            ]:
+                # Find the URL from the document processing
+                if doc.get("is_url") and doc.get("file_path"):
+                    discovered_urls[bibtex_key] = doc["file_path"]
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['file_path']}"
+                        )
+                    break
+
     def _process_semantic_scholar_queries(self) -> str:
         """Process all Semantic Scholar queries and return combined BibTeX content"""
         if self.verbose:
@@ -408,6 +425,7 @@ class DocumentAnalyzer:
             "id": len(self.report_manager.results["documents"]) + 1,
             "file_path": actual_path or pdf_path,
             "bibtex_key": bibtex_key,
+            "bibtex_metadata": metadata or {},
             "is_metadata_only": pdf_source == "metadata_only",
             "is_url": is_url,
             "pdf_source": pdf_source,  # Track how the PDF was obtained
@@ -625,6 +643,10 @@ class DocumentAnalyzer:
         if self.verbose:
             print(f"[DEBUG] Starting file processing for {len(files)} files")
 
+        # Track discovered URLs for updating BibTeX files
+        discovered_urls = {}  # bibtex_key -> url mapping
+        bibtex_files_to_update = []  # Files that should be updated
+
         try:
             # Check if any queries use Semantic Scholar
             has_semantic_scholar = any(
@@ -670,12 +692,21 @@ class DocumentAnalyzer:
                             temp_merged_file
                         )
                         for mapping in pdf_mappings:
-                            self.process_pdf(
+                            success = self.process_pdf(
                                 mapping["pdf_path"],
                                 mapping["bibtex_key"],
                                 mapping["entry_text"],
                                 temp_merged_file,
                             )
+
+                            # Track discovered URLs
+                            if success and mapping["bibtex_key"]:
+                                self._track_discovered_url(
+                                    mapping["bibtex_key"], discovered_urls
+                                )
+
+                        # Mark original bibtex file for updating
+                        bibtex_files_to_update.append(bibtex_file)
 
                         if self.verbose:
                             print(
@@ -698,12 +729,21 @@ class DocumentAnalyzer:
                         temp_ss_file
                     )
                     for mapping in pdf_mappings:
-                        self.process_pdf(
+                        success = self.process_pdf(
                             mapping["pdf_path"],
                             mapping["bibtex_key"],
                             mapping["entry_text"],
                             temp_ss_file,
                         )
+
+                        # Track discovered URLs
+                        if success and mapping["bibtex_key"]:
+                            self._track_discovered_url(
+                                mapping["bibtex_key"], discovered_urls
+                            )
+
+                    # Mark semantic scholar file for updating
+                    bibtex_files_to_update.append("semantic_scholar.bib")
 
                     if self.verbose:
                         print(
@@ -718,18 +758,46 @@ class DocumentAnalyzer:
                     )
 
                     for mapping in pdf_mappings:
-                        self.process_pdf(
+                        success = self.process_pdf(
                             mapping["pdf_path"],
                             mapping["bibtex_key"],
                             mapping["entry_text"],
                             bibtex_file,
                         )
 
+                        # Track discovered URLs
+                        if success and mapping["bibtex_key"]:
+                            self._track_discovered_url(
+                                mapping["bibtex_key"], discovered_urls
+                            )
+
+                    # Mark bibtex file for updating
+                    bibtex_files_to_update.append(bibtex_file)
+
             # Process individual PDF files (these are independent of BibTeX/Semantic Scholar)
             for pdf_file in pdf_files:
                 if self.verbose:
                     print(f"[DEBUG] Processing individual PDF: {pdf_file}")
                 self.process_pdf(pdf_file)
+
+            # Update BibTeX files with discovered URLs
+            if discovered_urls and bibtex_files_to_update:
+                print(
+                    f"\nUpdating BibTeX files with {len(discovered_urls)} discovered URLs..."
+                )
+
+                total_updated = 0
+                for bibtex_file in set(bibtex_files_to_update):  # Remove duplicates
+                    if os.path.exists(bibtex_file):
+                        updated_count = self.bibtex_processor.update_bibtex_with_urls(
+                            bibtex_file, discovered_urls
+                        )
+                        total_updated += updated_count
+
+                if total_updated > 0:
+                    print(
+                        f"Updated {total_updated} BibTeX entries with discovered URLs"
+                    )
 
             # Update filtered out count in metadata
             self.report_manager.results["metadata"]["filtered_out_count"] = len(
