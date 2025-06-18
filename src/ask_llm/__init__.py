@@ -8,6 +8,8 @@ from .bibtex import BibtexProcessor
 from .api import GeminiAPIClient
 from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
+from .document_processor import DocumentProcessor
+from .semantic_scholar_processor import SemanticScholarProcessor
 
 __all__ = [
     "DocumentAnalyzer",
@@ -16,4 +18,6 @@ __all__ = [
     "GeminiAPIClient",
     "ReportManager",
     "SemanticScholarClient",
+    "DocumentProcessor",
+    "SemanticScholarProcessor",
 ]

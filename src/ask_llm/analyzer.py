@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-import json
-import base64
-import sys
 import os
 from pathlib import Path
 
@@ -12,24 +9,37 @@ from .api import GeminiAPIClient
 from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
 from .pdf_search import PDFSearcher
+from .document_processor import DocumentProcessor
+from .semantic_scholar_processor import SemanticScholarProcessor
 
 
 class DocumentAnalyzer:
     def __init__(self, verbose=False, auto_download_pdfs=True):
         self.verbose = verbose
         self.auto_download_pdfs = auto_download_pdfs
+
+        # Initialize core components
         self.config = ConfigManager(verbose=verbose)
         self.bibtex_processor = BibtexProcessor(
             verbose=verbose, auto_download_pdfs=auto_download_pdfs
         )
         self.api_client = GeminiAPIClient(verbose=verbose)
         self.report_manager = ReportManager(verbose=verbose)
+
+        # Initialize specialized components
         self.semantic_scholar_client = SemanticScholarClient(
             verbose=verbose, auto_download_pdfs=auto_download_pdfs
         )
-        # Initialize PDF searcher with download mode based on auto_download_pdfs
         self.pdf_searcher = PDFSearcher(
             verbose=verbose, enabled=True, download_pdfs=auto_download_pdfs
+        )
+
+        # Initialize processors
+        self.document_processor = DocumentProcessor(
+            self.api_client, self.bibtex_processor, self.pdf_searcher, verbose=verbose
+        )
+        self.semantic_scholar_processor = SemanticScholarProcessor(
+            self.semantic_scholar_client, verbose=verbose
         )
 
         # Initialize with default configuration
@@ -38,7 +48,6 @@ class DocumentAnalyzer:
         self.json_report_file = "analysis_report.json"
         self.csv_report_file = "analysis_report.csv"
         self.filtered_out_documents = []  # Track filtered out documents
-        self.downloaded_pdfs = []  # Track downloaded PDF files for cleanup
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
@@ -70,107 +79,6 @@ class DocumentAnalyzer:
             self.queries, self.api_client.default_model
         )
 
-    def _find_pdf_file(self, pdf_path, bibtex_dir=None):
-        """Find PDF file in common locations if not found at given path"""
-        if self.verbose:
-            print(f"[DEBUG] Looking for PDF file: {pdf_path}")
-
-        if os.path.isfile(pdf_path):
-            if self.verbose:
-                print(f"[DEBUG] Found PDF at original path: {pdf_path}")
-            return pdf_path
-
-        # If we have a BibTeX directory, try relative to that first
-        if bibtex_dir:
-            bibtex_relative_path = os.path.join(bibtex_dir, pdf_path)
-            if os.path.isfile(bibtex_relative_path):
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Found PDF relative to BibTeX directory: {bibtex_relative_path}"
-                    )
-                return bibtex_relative_path
-
-        if self.verbose:
-            print("[DEBUG] PDF file not found in any location")
-        return None
-
-    def _search_for_pdf(self, metadata):
-        """Search for PDF using title and authors from metadata"""
-        if not metadata:
-            return None
-
-        title = metadata.get("title", "")
-        authors = metadata.get("author", "")
-
-        if not title:
-            if self.verbose:
-                print("[DEBUG] No title available for PDF search")
-            return None
-
-        if self.verbose:
-            print(f"[DEBUG] Searching for PDF using title: {title[:50]}...")
-
-        try:
-            result = self.pdf_searcher.search_pdf(title, authors)
-            if result:
-                if self.verbose:
-                    if self.auto_download_pdfs:
-                        print(f"[DEBUG] Downloaded PDF to: {result}")
-                        # Track downloaded file for cleanup
-                        self.downloaded_pdfs.append(result)
-                    else:
-                        print(f"[DEBUG] Found PDF URL: {result}")
-                return result
-            else:
-                if self.verbose:
-                    print("[DEBUG] PDF search did not find any results")
-                return None
-        except Exception as e:
-            if self.verbose:
-                print(f"[DEBUG] PDF search failed with error: {e}")
-            return None
-
-    def _evaluate_filter(self, response, filter_field, document_data, query_id):
-        """Evaluate filter immediately after query processing.
-        Returns True if processing should continue, False if document should be filtered out."""
-
-        if not isinstance(response, dict):
-            # No structured response - filter out
-            document_data["is_filtered_out"] = True
-            document_data["filtered_at_query"] = query_id
-            document_data["filter_reason"] = (
-                f"No structured response for filter field '{filter_field}'"
-            )
-            if self.verbose:
-                print(
-                    f"[DEBUG] Document {document_data['id']} filtered out at query {query_id}: No structured response"
-                )
-            return False
-
-        field_value = response.get(filter_field)
-
-        if not isinstance(field_value, bool):
-            print(f"Error: Field '{filter_field}' has non-boolean value: {field_value}")
-            sys.exit(1)
-
-        if not field_value:  # False means filter out
-            document_data["is_filtered_out"] = True
-            document_data["filtered_at_query"] = query_id
-            document_data["filter_reason"] = (
-                f"Filter field '{filter_field}' evaluated to False"
-            )
-            if self.verbose:
-                print(
-                    f"[DEBUG] Document {document_data['id']} ({document_data['bibtex_key']}) filtered out at query {query_id}: {filter_field}=false"
-                )
-            return False
-
-        if self.verbose:
-            print(
-                f"[DEBUG] Document {document_data['id']} ({document_data['bibtex_key']}) passed filter at query {query_id}: {filter_field}=true"
-            )
-        return True  # Continue processing
-
     def _track_discovered_url(self, bibtex_key: str, discovered_urls: dict):
         """Track discovered URLs for later BibTeX update"""
         # Check if we discovered a URL for this document
@@ -187,414 +95,6 @@ class DocumentAnalyzer:
                             f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['file_path']}"
                         )
                     break
-
-    def _process_semantic_scholar_queries(self) -> str:
-        """Process all Semantic Scholar queries and return combined BibTeX content"""
-        if self.verbose:
-            print("[DEBUG] Processing all Semantic Scholar queries")
-
-        all_bibtex_entries = []
-        entry_counter = 1
-
-        # Process each Semantic Scholar query
-        semantic_scholar_queries = [
-            q for q in self.queries if q.params.get("semantic_scholar", False)
-        ]
-
-        for query_idx, query_info in enumerate(semantic_scholar_queries):
-            if self.verbose:
-                print(
-                    f"[DEBUG] Processing Semantic Scholar query {query_idx + 1}: {query_info.text[:100]}..."
-                )
-
-            # Extract Semantic Scholar parameters from query params
-            ss_params = {}
-            for key, value in query_info.params.items():
-                if key.startswith("ss_"):
-                    # Remove 'ss_' prefix and convert back to API parameter name
-                    api_key = key[3:].replace("_", "")
-                    if api_key == "publicationdateoryear":
-                        api_key = "publicationDateOrYear"
-                    elif api_key == "fieldsofstudy":
-                        api_key = "fieldsOfStudy"
-                    elif api_key == "publicationtypes":
-                        api_key = "publicationTypes"
-                    elif api_key == "mincitationcount":
-                        api_key = "minCitationCount"
-                    elif api_key == "openaccesspdf":
-                        api_key = "openAccessPdf"
-                    ss_params[api_key] = value
-
-            if self.verbose:
-                print(f"[DEBUG] Semantic Scholar parameters: {ss_params}")
-
-            # Perform the search
-            try:
-                papers = self.semantic_scholar_client.search_papers(
-                    query_info.text, ss_params
-                )
-
-                # Create BibTeX entries for each paper
-                for paper in papers:
-                    entry_key = f"semanticscholar{entry_counter}"
-                    bibtex_entry = self.semantic_scholar_client.create_bibtex_entry(
-                        paper, entry_key
-                    )
-                    all_bibtex_entries.append(bibtex_entry)
-                    entry_counter += 1
-
-                if self.verbose:
-                    print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
-
-            except Exception as e:
-                print(f"Error processing Semantic Scholar query {query_idx + 1}: {e}")
-                if self.verbose:
-                    print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
-                continue
-
-        if all_bibtex_entries:
-            combined_bibtex = "\n\n".join(all_bibtex_entries)
-
-            # Save Semantic Scholar BibTeX to permanent file
-            semantic_scholar_file = "semantic_scholar.bib"
-            with open(semantic_scholar_file, "w", encoding="utf-8") as f:
-                f.write(combined_bibtex)
-
-            if self.verbose:
-                print(
-                    f"[DEBUG] Created combined BibTeX with {len(all_bibtex_entries)} entries"
-                )
-                print(
-                    f"[DEBUG] Saved Semantic Scholar BibTeX to: {semantic_scholar_file}"
-                )
-
-            print(f"Semantic Scholar BibTeX saved to: {semantic_scholar_file}")
-            return combined_bibtex
-        else:
-            if self.verbose:
-                print("[DEBUG] No Semantic Scholar entries generated")
-            return ""
-
-    def _merge_bibtex_files(
-        self, original_bibtex_file: str = None, semantic_scholar_bibtex: str = ""
-    ) -> str:
-        """Merge original BibTeX file with Semantic Scholar results"""
-        merged_content = ""
-
-        # Add original BibTeX content if provided
-        if original_bibtex_file:
-            try:
-                with open(original_bibtex_file, "r", encoding="utf-8") as f:
-                    original_content = f.read().strip()
-                    if original_content:
-                        merged_content += original_content
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Added original BibTeX content from {original_bibtex_file}"
-                            )
-            except FileNotFoundError:
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Original BibTeX file {original_bibtex_file} not found"
-                    )
-            except Exception as e:
-                print(
-                    f"Warning: Could not read original BibTeX file {original_bibtex_file}: {e}"
-                )
-
-        # Add Semantic Scholar content
-        if semantic_scholar_bibtex:
-            if merged_content:
-                merged_content += "\n\n"
-            merged_content += semantic_scholar_bibtex
-            if self.verbose:
-                print("[DEBUG] Added Semantic Scholar BibTeX content")
-
-        return merged_content
-
-    def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
-        """Process a single PDF file, URL, or BibTeX metadata with multiple queries"""
-        if self.verbose:
-            print(f"[DEBUG] Starting processing of: {pdf_path}")
-
-        # Determine if this is a URL or a file path
-        is_url = pdf_path and (
-            pdf_path.startswith("http://") or pdf_path.startswith("https://")
-        )
-
-        # Initialize variables
-        actual_path = None
-        pdf_data = None
-        metadata = None
-        urls = []
-        pdf_source = "unknown"
-
-        if is_url:
-            if self.verbose:
-                print(f"[DEBUG] Processing URL: {pdf_path}")
-            # For URLs, we'll use the URL context API
-            urls = [pdf_path]
-            pdf_source = "provided_url"
-        else:
-            # Try to find PDF file first
-            if pdf_path:
-                actual_path = self._find_pdf_file(
-                    pdf_path,
-                    os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
-                )
-
-            if actual_path:
-                # Process local PDF
-                try:
-                    with open(actual_path, "rb") as f:
-                        pdf_data = f.read()
-                        if self.verbose:
-                            print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
-                        if pdf_data:
-                            encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
-                            if self.verbose:
-                                print(
-                                    f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
-                                )
-                            pdf_source = "local_file"
-                except Exception as e:
-                    print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
-                    return False
-            else:
-                # PDF not found locally - try to search for it or use metadata
-                if entry_text and bibtex_key:
-                    metadata = self.bibtex_processor.extract_metadata(
-                        entry_text, bibtex_key
-                    )
-
-                    # Try to search for PDF using metadata
-                    search_result = self._search_for_pdf(metadata)
-
-                    if search_result:
-                        # Check if search result is URL or downloaded file
-                        if search_result.startswith(
-                            "http://"
-                        ) or search_result.startswith("https://"):
-                            # URL mode - use URL context
-                            urls = [search_result]
-                            is_url = True
-                            pdf_source = "searched_url"
-                            if self.verbose:
-                                print(
-                                    f"[DEBUG] Using searched PDF URL: {search_result}"
-                                )
-                        else:
-                            # Download mode - process as local file
-                            actual_path = search_result
-                            try:
-                                with open(actual_path, "rb") as f:
-                                    pdf_data = f.read()
-                                    if pdf_data:
-                                        encoded_pdf = base64.b64encode(pdf_data).decode(
-                                            "utf-8"
-                                        )
-                                        pdf_source = "searched_download"
-                                        if self.verbose:
-                                            print(
-                                                f"[DEBUG] Using downloaded PDF: {actual_path}"
-                                            )
-                            except Exception as e:
-                                print(
-                                    f"Error reading downloaded PDF {actual_path}: {e}",
-                                    file=sys.stderr,
-                                )
-                                # Fallback to metadata
-                                pdf_source = "metadata_only"
-                                if self.verbose:
-                                    print(
-                                        f"[DEBUG] Falling back to metadata for {bibtex_key}"
-                                    )
-                    else:
-                        # No PDF found, use metadata only
-                        pdf_source = "metadata_only"
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Using metadata for {bibtex_key} (PDF not found)"
-                            )
-                else:
-                    print(f"File not found: {pdf_path}", file=sys.stderr)
-                    return False
-
-        # Initialize document structure with new filtering fields
-        document_data = {
-            "id": len(self.report_manager.results["documents"]) + 1,
-            "file_path": actual_path or pdf_path,
-            "bibtex_key": bibtex_key,
-            "bibtex_metadata": metadata or {},
-            "is_metadata_only": pdf_source == "metadata_only",
-            "is_url": is_url,
-            "pdf_source": pdf_source,  # Track how the PDF was obtained
-            "is_filtered_out": False,  # NEW: Track if document was filtered during processing
-            "filtered_at_query": None,  # NEW: Which query caused the filtering
-            "filter_reason": None,  # NEW: Reason for filtering
-            "queries": [],
-        }
-
-        successful_queries = 0
-
-        for i, query_info in enumerate(self.queries):
-            # Skip Semantic Scholar queries when processing documents
-            if query_info.params.get("semantic_scholar", False):
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Skipping Semantic Scholar query {i + 1} for document processing"
-                    )
-                continue
-
-            if self.verbose:
-                print(f"[DEBUG] Processing query {i + 1}/{len(self.queries)}")
-                print(f"[DEBUG] Query parameters: {query_info.params}")
-
-            # Create appropriate prompt and payload
-            if is_url:
-                # Use URL context for URLs
-                query_text = (
-                    f"Analyze the content from this URL: {urls[0]}\n\n{query_info.text}"
-                )
-                payload = self.api_client.create_url_payload(query_text, urls)
-            elif pdf_data:
-                # Use PDF processing for local PDFs
-                query_text = (
-                    f"I'm attaching the PDF file {actual_path}\n\n{query_info.text}"
-                )
-                payload = self.api_client.create_pdf_payload(encoded_pdf, query_text)
-            else:
-                # Use metadata for entries without accessible content
-                metadata_text = self.bibtex_processor.format_metadata_for_prompt(
-                    metadata
-                )
-                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}"
-                payload = self.api_client.create_text_payload(query_text)
-
-            # Apply query parameters to payload
-            payload = self.api_client.apply_query_params(payload, query_info)
-
-            # Make API request
-            try:
-                response_data = self.api_client.make_request(payload, query_info)
-
-                # Log response
-                with open(self.logfile, "a", encoding="utf-8") as f:
-                    f.write(
-                        f"=== Response for {actual_path or pdf_path or bibtex_key} (Query {i + 1}) ===\n"
-                    )
-                    json.dump(response_data, f, indent=2)
-                    f.write("\n\n")
-
-                # Extract and process response
-                response_content, grounding_metadata = self.api_client.extract_response(
-                    response_data
-                )
-
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Extracted response content: {len(response_content)} characters"
-                    )
-
-                # Parse JSON response if structure was requested
-                parsed_response = response_content
-                query_structure = query_info.structure
-                if query_structure:
-                    try:
-                        parsed_response = json.loads(response_content)
-                    except json.JSONDecodeError:
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Failed to parse JSON response for query {i + 1}"
-                            )
-
-                query_result = {
-                    "query_id": i + 1,
-                    "response": parsed_response,
-                    "grounding_metadata": grounding_metadata,
-                }
-
-                document_data["queries"].append(query_result)
-                successful_queries += 1
-
-                if self.verbose:
-                    print(f"[DEBUG] Successfully processed query {i + 1}")
-
-                # NEW: Check for early termination based on filter
-                if query_info.filter_on:
-                    should_continue = self._evaluate_filter(
-                        parsed_response, query_info.filter_on, document_data, i + 1
-                    )
-                    if not should_continue:
-                        # Add to filtered documents list and stop processing
-                        self.filtered_out_documents.append(document_data)
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Early termination: document filtered out at query {i + 1}"
-                            )
-                        break  # Stop processing remaining queries
-
-            except Exception as e:
-                print(
-                    f"Error processing query {i + 1} for {actual_path or pdf_path or bibtex_key}: {e}",
-                    file=sys.stderr,
-                )
-                if self.verbose:
-                    print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
-                continue
-
-        # Only add document to main results if it wasn't filtered out
-        if successful_queries > 0:
-            if not document_data["is_filtered_out"]:
-                self.report_manager.add_document(document_data)
-
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or pdf_path or bibtex_key}"
-                    )
-
-                # Record processed file
-                with open(self.processed_list, "a", encoding="utf-8") as f:
-                    if actual_path:
-                        f.write(f"{actual_path}|{bibtex_key}\n")
-                    elif is_url:
-                        f.write(f"URL:{urls[0] if urls else pdf_path}|{bibtex_key}\n")
-                    else:
-                        f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
-
-                # Flush JSON and CSV output after each document
-                self.report_manager.save_json_report(self.json_report_file)
-                self.report_manager.save_csv_report(self.csv_report_file)
-
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
-                    )
-
-                display_path = (
-                    actual_path
-                    or (urls[0] if urls else pdf_path)
-                    or f"metadata for {bibtex_key}"
-                )
-                print(f"Successfully processed: {display_path}")
-                return True
-            else:
-                # Document was filtered out during processing
-                display_path = (
-                    actual_path
-                    or (urls[0] if urls else pdf_path)
-                    or f"metadata for {bibtex_key}"
-                )
-                print(
-                    f"Filtered out during processing: {display_path} (at query {document_data['filtered_at_query']})"
-                )
-                return True  # Still consider it "processed" even though filtered
-
-        if self.verbose:
-            print(
-                f"[DEBUG] No responses processed for {actual_path or pdf_path or bibtex_key}"
-            )
-        return False
 
     def _save_filtered_out_list(self):
         """Save list of filtered out documents"""
@@ -628,15 +128,62 @@ class DocumentAnalyzer:
 
         print(f"Filtered out documents list saved to: {filtered_out_file}")
 
-    def _cleanup_downloaded_pdfs(self):
-        """Clean up downloaded temporary PDF files"""
-        if self.downloaded_pdfs:
+    def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
+        """Process a single PDF file, URL, or BibTeX metadata with multiple queries"""
+        document_id = len(self.report_manager.results["documents"]) + 1
+
+        document_data, success = self.document_processor.process_document(
+            pdf_path,
+            bibtex_key,
+            entry_text,
+            bibtex_file_path,
+            self.queries,
+            document_id,
+            self.logfile,
+        )
+
+        if not success:
+            return False
+
+        # Handle the processed document
+        if document_data["is_filtered_out"]:
+            # Document was filtered out during processing
+            self.filtered_out_documents.append(document_data)
+            display_path = document_data["file_path"] or f"metadata for {bibtex_key}"
+            print(
+                f"Filtered out during processing: {display_path} (at query {document_data['filtered_at_query']})"
+            )
+        else:
+            # Document passed all filters
+            self.report_manager.add_document(document_data)
+
             if self.verbose:
                 print(
-                    f"[DEBUG] Cleaning up {len(self.downloaded_pdfs)} downloaded PDF files"
+                    f"[DEBUG] Successfully processed document for {pdf_path or bibtex_key}"
                 )
-            self.pdf_searcher.cleanup_temp_files(self.downloaded_pdfs)
-            self.downloaded_pdfs.clear()
+
+            # Record processed file
+            with open(self.processed_list, "a", encoding="utf-8") as f:
+                if document_data.get("is_url"):
+                    f.write(f"URL:{document_data['file_path']}|{bibtex_key}\n")
+                elif document_data["is_metadata_only"]:
+                    f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
+                else:
+                    f.write(f"{document_data['file_path']}|{bibtex_key}\n")
+
+            # Flush JSON and CSV output after each document
+            self.report_manager.save_json_report(self.json_report_file)
+            self.report_manager.save_csv_report(self.csv_report_file)
+
+            if self.verbose:
+                print(
+                    f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
+                )
+
+            display_path = document_data["file_path"] or f"metadata for {bibtex_key}"
+            print(f"Successfully processed: {display_path}")
+
+        return True
 
     def process_files(self, files):
         """Main processing logic"""
@@ -658,7 +205,11 @@ class DocumentAnalyzer:
             if has_semantic_scholar:
                 if self.verbose:
                     print("[DEBUG] Processing Semantic Scholar queries")
-                semantic_scholar_bibtex = self._process_semantic_scholar_queries()
+                semantic_scholar_bibtex = (
+                    self.semantic_scholar_processor.process_semantic_scholar_queries(
+                        self.queries
+                    )
+                )
 
             # Separate file types
             bibtex_files = [f for f in files if f.endswith(".bib")]
@@ -678,8 +229,10 @@ class DocumentAnalyzer:
                         print(
                             f"Processing BibTeX file with Semantic Scholar results: {bibtex_file}"
                         )
-                        merged_content = self._merge_bibtex_files(
-                            bibtex_file, semantic_scholar_bibtex
+                        merged_content = (
+                            self.semantic_scholar_processor.merge_bibtex_files(
+                                bibtex_file, semantic_scholar_bibtex
+                            )
                         )
 
                         # Create a temporary merged file
@@ -715,7 +268,7 @@ class DocumentAnalyzer:
                 else:
                     # Case 2: Only Semantic Scholar results (no BibTeX files)
                     print("Processing Semantic Scholar results")
-                    merged_content = self._merge_bibtex_files(
+                    merged_content = self.semantic_scholar_processor.merge_bibtex_files(
                         None, semantic_scholar_bibtex
                     )
 
@@ -841,4 +394,4 @@ class DocumentAnalyzer:
 
         finally:
             # Always clean up downloaded PDFs
-            self._cleanup_downloaded_pdfs()
+            self.document_processor.cleanup_downloaded_pdfs()
