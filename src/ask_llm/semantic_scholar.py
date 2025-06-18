@@ -106,13 +106,11 @@ class SemanticScholarClient:
         # Get URL - prefer open access PDF, then regular URL
         url = ""
 
-        # Check for open access PDF first
+        # Check for open access PDF
         open_access_pdf = paper.get("openAccessPdf")
         if open_access_pdf and open_access_pdf.get("url"):
             url = open_access_pdf["url"]
-        elif paper.get("url"):
-            # Use regular URL as fallback
-            url = paper.get("url", "")
+        # avoid regular url: we only want url to pdf files
 
         # Get DOI if available
         doi = ""

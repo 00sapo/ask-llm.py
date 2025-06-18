@@ -15,3 +15,7 @@ report.csv
 src/ask_llm.egg-info
 uv.lock
 src/ask_llm/__pycache__
+analysis_report.csv
+analysis_report.json
+semantic_scholar.bib
+semantic_scholar_results.bib
