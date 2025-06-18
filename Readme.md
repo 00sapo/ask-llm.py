@@ -1,4 +1,6 @@
-# ask-llm.py — Batch PDF Analysis with Gemini LLM
+# ask-llm.py
+
+Automate boring stuffs in research with LLMs.
 
 ## NAME
 
@@ -260,6 +262,13 @@ When CSV format is specified (by using a `.csv` file extension), the output will
 
 To set up the project for development, use `uv run src.ask_llm.cli` to run the CLI with the
 development environment. This allows you to test changes without needing to reinstall the package.
+
+---
+
+## TODO
+
+- Support other models via litellm
+- Pass output of previous queries to subsequent queries
 
 ---
 
