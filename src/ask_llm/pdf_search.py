@@ -5,16 +5,18 @@ import re
 import tempfile
 import time
 from typing import Optional
-from pathlib import Path
 
 import requests
 from duckduckgo_search import DDGS
 
 
 class PDFSearcher:
-    def __init__(self, verbose=False, enabled=True):
+    def __init__(self, verbose=False, enabled=True, download_pdfs=True):
         self.verbose = verbose
         self.enabled = enabled
+        self.download_pdfs = (
+            download_pdfs  # New parameter to control download vs URL mode
+        )
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -24,9 +26,12 @@ class PDFSearcher:
 
         if self.verbose:
             print(f"[DEBUG] Initialized PDF searcher (enabled: {self.enabled})")
+            if self.enabled:
+                mode = "download" if self.download_pdfs else "URL-only"
+                print(f"[DEBUG] PDF searcher mode: {mode}")
 
     def search_pdf(self, title: str, authors: str = "") -> Optional[str]:
-        """Search for PDF using DuckDuckGo and download if found"""
+        """Search for PDF using DuckDuckGo and return either URL or downloaded file path"""
         if not self.enabled:
             if self.verbose:
                 print("[DEBUG] PDF search disabled, skipping")
@@ -57,7 +62,15 @@ class PDFSearcher:
             if pdf_url:
                 if self.verbose:
                     print(f"[DEBUG] Found PDF URL: {pdf_url}")
-                return self._download_pdf(pdf_url, title)
+
+                if self.download_pdfs:
+                    # Download mode: download PDF and return local path
+                    return self._download_pdf(pdf_url, title)
+                else:
+                    # URL mode: return URL directly
+                    if self.verbose:
+                        print(f"[DEBUG] Returning PDF URL (no download): {pdf_url}")
+                    return pdf_url
             else:
                 if self.verbose:
                     print("[DEBUG] No PDF found in search results")
@@ -228,8 +241,8 @@ class PDFSearcher:
 
     def cleanup_temp_files(self, pdf_paths: list):
         """Clean up temporary PDF files"""
-        if not self.enabled:
-            return
+        if not self.download_pdfs:
+            return  # No files to clean up in URL mode
 
         for pdf_path in pdf_paths:
             if (

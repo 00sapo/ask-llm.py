@@ -196,7 +196,8 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
 
 Default names (can be overridden via CLI options):
 
-- **`analysis_report.json`**: Main structured report. (Use `.csv` extension for CSV format, e.g., `--report report.csv`).
+- **`analysis_report.json`**: Main structured report in JSON format.
+- **`analysis_report.csv`**: Main structured report in CSV format.
 - **`log.txt`**: Raw API responses from the LLM.
 - **`processed_files.txt`**: List of processed files/BibTeX keys.
 - **`filtered_out_documents.txt`**: List of documents excluded by `Filter-On` criteria in `query.md`.
