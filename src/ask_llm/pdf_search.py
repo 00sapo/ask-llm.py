@@ -129,32 +129,67 @@ class PDFSearcher:
             print(f"[DEBUG] Searching DuckDuckGo with query: {query}")
 
         try:
-            # Use DDGS to search for text results with reduced result count
-            with DDGS() as ddgs:
-                results = ddgs.text(
-                    keywords=query, region="wt-wt", safesearch="off", max_results=1
+            # Create new DDGS instance for each request to avoid rate limiting
+            ddgs = DDGS()
+
+            # Perform the actual search
+            results = ddgs.text(
+                keywords=query, region="wt-wt", safesearch="off", max_results=1
+            )
+
+            if self.verbose:
+                print(f"[DEBUG] Found {len(results)} search results")
+
+            pdf_url = None
+            # Look for PDF URLs in the results
+            for result in results:
+                href = result.get("href", "")
+                if href.lower().endswith(".pdf"):
+                    if self.verbose:
+                        print(f"[DEBUG] Found direct PDF link: {href}")
+                    pdf_url = href
+                    break
+
+                # Also check the title and body for PDF mentions
+                title = result.get("title", "").lower()
+                body = result.get("body", "").lower()
+                if "pdf" in title or "pdf" in body:
+                    # Try to extract PDF URL from the page
+                    page_pdf_url = self._extract_pdf_from_page(href)
+                    if page_pdf_url:
+                        pdf_url = page_pdf_url
+                        break
+
+            # Perform a dummy query using one of the other methods to help avoid rate limiting
+            try:
+                dummy_search_methods = ["news", "images"]  # , "videos"]
+                dummy_method = random.choice(dummy_search_methods)
+                dummy_query = random.choice(
+                    ["science", "technology", "research", "academic"]
                 )
 
                 if self.verbose:
-                    print(f"[DEBUG] Found {len(results)} search results")
+                    print(
+                        f"[DEBUG] Performing dummy {dummy_method} search to avoid rate limiting"
+                    )
 
-                # Look for PDF URLs in the results
-                for result in results:
-                    href = result.get("href", "")
-                    if href.lower().endswith(".pdf"):
-                        if self.verbose:
-                            print(f"[DEBUG] Found direct PDF link: {href}")
-                        return href
+                if dummy_method == "news":
+                    list(ddgs.news(keywords=dummy_query, max_results=1))
+                elif dummy_method == "images":
+                    list(ddgs.images(keywords=dummy_query, max_results=1))
+                elif dummy_method == "videos":
+                    list(ddgs.videos(keywords=dummy_query, max_results=1))
 
-                    # Also check the title and body for PDF mentions
-                    title = result.get("title", "").lower()
-                    body = result.get("body", "").lower()
-                    if "pdf" in title or "pdf" in body:
-                        # Try to extract PDF URL from the page
-                        pdf_url = self._extract_pdf_from_page(href)
-                        if pdf_url:
-                            return pdf_url
+                if self.verbose:
+                    print(f"[DEBUG] Completed dummy {dummy_method} search")
 
+            except Exception as dummy_e:
+                if self.verbose:
+                    print(f"[DEBUG] Dummy search failed (non-critical): {dummy_e}")
+
+            if pdf_url:
+                return pdf_url
+            else:
                 if self.verbose:
                     print("[DEBUG] No PDF URLs found in search results")
                 return None
