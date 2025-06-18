@@ -3,6 +3,7 @@
 import json
 import csv
 from datetime import datetime
+from urllib.parse import quote_plus
 
 
 class ReportManager:
@@ -36,8 +37,69 @@ class ReportManager:
 
     def add_document(self, document_data):
         """Add a document to the results"""
+
+        # Extract title and authors from document data
+        title = ""
+        authors = ""
+
+        # Look through query responses for title/author information
+        for query_result in document_data.get("queries", []):
+            response = query_result.get("response", {})
+            if isinstance(response, dict):
+                # Check for common title fields
+                if "title" in response and response["title"]:
+                    title = response["title"]
+                # Check for common author fields
+                if "authors" in response and response["authors"]:
+                    authors = response["authors"]
+                elif "author" in response and response["author"]:
+                    authors = response["author"]
+
+                # Break once we find title (authors are optional)
+                if title:
+                    break
+
+        # Add title, authors, and Google Scholar link to document data
+        document_data["title"] = title
+        document_data["authors"] = authors
+        document_data["google_scholar_link"] = self.generate_google_scholar_link(
+            title, authors
+        )
+
         self.results["documents"].append(document_data)
         self.results["metadata"]["total_documents"] += 1
+
+    def generate_google_scholar_link(self, title, authors=None):
+        """Generate a Google Scholar search link for a paper"""
+        if not title:
+            return ""
+
+        # Clean title for search
+        search_query = title.strip()
+
+        # Add author information if available
+        if authors:
+            # Extract first author's last name for better search results
+            author_parts = authors.strip().split()
+            if author_parts:
+                # Try to get the last name (assuming "First Last" format)
+                if len(author_parts) >= 2:
+                    first_author_last = author_parts[-1]
+                    search_query += f" {first_author_last}"
+                else:
+                    # Single name, use as is
+                    search_query += f" {author_parts[0]}"
+
+        # URL encode the search query
+        encoded_query = quote_plus(search_query)
+
+        # Construct Google Scholar search URL
+        scholar_url = f"https://scholar.google.com/scholar?q={encoded_query}"
+
+        if self.verbose:
+            print(f"[DEBUG] Generated Google Scholar link for '{title}': {scholar_url}")
+
+        return scholar_url
 
     def save_json_report(self, filename):
         """Save results to JSON file"""
@@ -62,16 +124,38 @@ class ReportManager:
             with open(filename, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(
-                    ["Document", "BibTeX Key", "File Path", "Metadata Only"]
+                    [
+                        "Document ID",
+                        "BibTeX Key",
+                        "Title",
+                        "Authors",
+                        "Google Scholar Link",
+                        "File Path",
+                        "Metadata Only",
+                    ]
                 )
             return
 
-        # Analyze queries to determine column structure
-        headers = ["Document ID", "BibTeX Key", "File Path", "Metadata Only"]
+        # Analyze queries to determine column structure - skip semantic-scholar queries
+        headers = [
+            "Document ID",
+            "BibTeX Key",
+            "Title",
+            "Authors",
+            "Google Scholar Link",
+            "File Path",
+            "Metadata Only",
+        ]
         query_columns = []  # Track column info for data extraction
 
         for query in self.results["metadata"]["queries"]:
             query_id = query["id"]
+
+            # Skip semantic-scholar queries
+            if query.get("parameters", {}).get("semantic_scholar", False):
+                if self.verbose:
+                    print(f"[DEBUG] Skipping semantic-scholar query {query_id} in CSV")
+                continue
 
             # Check if this query has structured responses
             has_structured_response = False
@@ -130,6 +214,9 @@ class ReportManager:
                 row = [
                     doc["id"],
                     doc["bibtex_key"],
+                    doc.get("title", ""),
+                    doc.get("authors", ""),
+                    doc.get("google_scholar_link", ""),
                     doc["file_path"],
                     "Yes" if doc["is_metadata_only"] else "No",
                 ]
