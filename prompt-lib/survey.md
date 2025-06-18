@@ -5,14 +5,12 @@ music + (similarity | k-NN | cluster*) + (symbolic | lyrics)
 
 ===
 semantic-scholar: true
-fields-of-study: Computer Science
 
 (medieval | gregorian) + music + ( similarity | k-NN | cluster* )
 
 ===
-semantic-scholar: false
 model-name: gemini-2.5-flash
-temperature: 0.3
+temperature: 0.0
 google-search: false
 
 Is this paper describing any practical algorithm for computing the similarity between music excerpts or texts in the context of music?
@@ -35,7 +33,7 @@ Is this paper describing any practical algorithm for computing the similarity be
 filter-on: relevance
 
 ===
-model-name: gemini-2.5-pro-preview-05-06
+model-name: gemini-2.5-pro
 
 Answer to the following questions:
 
@@ -99,6 +97,7 @@ Answer to the following questions:
 ```
 
 ===
+model-name: gemini-2.5-flash
 
 Briefly describe the methods presented in the paper. Use 2 sentences max.
 
