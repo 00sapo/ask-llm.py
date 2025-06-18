@@ -102,8 +102,8 @@ def main(
             elif google_search:
                 # Enable Google Search for all queries if --google-search flag is used
                 for query_obj in self.queries:
-                    if "google_search" not in query_obj.params:
-                        query_obj.params["google_search"] = True
+                    if "google_search" not in query_obj.params:  # type: ignore
+                        query_obj.params["google_search"] = True  # type: ignore
                 if verbose:
                     console.print(
                         "[DEBUG] Google Search enabled for all queries via CLI flag",
@@ -135,10 +135,10 @@ def main(
                 if os.path.exists(self.report_file):
                     try:
                         with open(self.report_file, "r", encoding="utf-8") as f:
-                            self.results = json.load(f)
+                            self.report_manager.results = json.load(f)
                         if verbose:
                             console.print(
-                                f"[DEBUG] Loaded existing JSON with {len(self.results['documents'])} documents",
+                                f"[DEBUG] Loaded existing JSON with {len(self.report_manager.results['documents'])} documents",
                                 style="dim",
                             )
                     except (json.JSONDecodeError, FileNotFoundError):
@@ -147,9 +147,13 @@ def main(
                                 "[DEBUG] Could not load existing JSON, starting fresh",
                                 style="dim",
                             )
-                        self._initialize_json_structure()
+                        self.report_manager.initialize_json_structure(
+                            self.queries, self.api_client.model
+                        )
                 else:
-                    self._initialize_json_structure()
+                    self.report_manager.initialize_json_structure(
+                        self.queries, self.api_client.model
+                    )
 
     try:
         with Progress(
