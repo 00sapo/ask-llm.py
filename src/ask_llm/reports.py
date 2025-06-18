@@ -51,7 +51,7 @@ class ReportManager:
             )
 
     def save_csv_report(self, filename):
-        """Save results to CSV file"""
+        """Save results to CSV file with JSON fields expanded to separate columns"""
         if self.verbose:
             print(f"[DEBUG] Saving CSV report to {filename}")
 
@@ -64,17 +64,61 @@ class ReportManager:
                 )
             return
 
-        # Prepare CSV structure
-        # Columns: Document info + one column per query
+        # Analyze queries to determine column structure
         headers = ["Document ID", "BibTeX Key", "File Path", "Metadata Only"]
+        query_columns = []  # Track column info for data extraction
 
-        # Add query columns
         for query in self.results["metadata"]["queries"]:
-            # Truncate long query text for column header
-            query_text = (
-                query["text"][:50] + "..." if len(query["text"]) > 50 else query["text"]
-            )
-            headers.append(f"Query {query['id']}: {query_text}")
+            query_id = query["id"]
+
+            # Check if this query has structured responses
+            has_structured_response = False
+            field_names = []
+
+            # First, check if structure is defined in query metadata
+            if query.get("structure") and query["structure"].get("properties"):
+                field_names = list(query["structure"]["properties"].keys())
+                has_structured_response = True
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Query {query_id} has predefined structure with fields: {field_names}"
+                    )
+            else:
+                # Check first response to see if it's structured
+                for doc in self.results["documents"]:
+                    for q in doc["queries"]:
+                        if q["query_id"] == query_id and isinstance(
+                            q["response"], dict
+                        ):
+                            field_names = list(q["response"].keys())
+                            has_structured_response = True
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Query {query_id} has structured response with fields: {field_names}"
+                                )
+                            break
+                    if has_structured_response:
+                        break
+
+            if has_structured_response:
+                # Create separate columns for each field
+                for field_name in field_names:
+                    column_name = f"Query {query_id} - {field_name}"
+                    headers.append(column_name)
+                    query_columns.append({"query_id": query_id, "field": field_name})
+            else:
+                # Single column for non-structured response
+                query_text = (
+                    query["text"][:50] + "..."
+                    if len(query["text"]) > 50
+                    else query["text"]
+                )
+                column_name = f"Query {query_id}: {query_text}"
+                headers.append(column_name)
+                query_columns.append({"query_id": query_id, "field": None})
+
+        if self.verbose:
+            print(f"[DEBUG] Created {len(headers)} CSV columns")
 
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -91,23 +135,46 @@ class ReportManager:
                 # Create a mapping of query_id to response for this document
                 query_responses = {q["query_id"]: q["response"] for q in doc["queries"]}
 
-                # Add response for each query (in order)
-                for query in self.results["metadata"]["queries"]:
-                    query_id = query["id"]
+                # Add response for each query column
+                for col_info in query_columns:
+                    query_id = col_info["query_id"]
+                    field_name = col_info["field"]
                     response = query_responses.get(query_id, "")
 
-                    # Convert response to string format suitable for CSV
-                    if isinstance(response, dict):
-                        # For structured JSON responses, convert to compact JSON string
-                        response_str = json.dumps(response, ensure_ascii=False)
-                    elif isinstance(response, list):
-                        # For list responses, convert to compact JSON string
-                        response_str = json.dumps(response, ensure_ascii=False)
+                    if field_name is None:
+                        # Non-structured response - use entire response
+                        if isinstance(response, dict):
+                            # If response is unexpectedly structured, convert to JSON string
+                            response_str = json.dumps(response, ensure_ascii=False)
+                        elif isinstance(response, list):
+                            # If response is a list, convert to JSON string
+                            response_str = json.dumps(response, ensure_ascii=False)
+                        else:
+                            # String response - clean up newlines
+                            response_str = (
+                                str(response).replace("\n", " ").replace("\r", " ")
+                            )
                     else:
-                        # For string responses, use as-is but clean up newlines
-                        response_str = (
-                            str(response).replace("\n", " ").replace("\r", " ")
-                        )
+                        # Structured response - extract specific field
+                        if isinstance(response, dict):
+                            field_value = response.get(field_name, "")
+                            if isinstance(field_value, (dict, list)):
+                                # Sub-objects and arrays are converted to JSON strings
+                                response_str = json.dumps(
+                                    field_value, ensure_ascii=False
+                                )
+                            elif field_value is None:
+                                response_str = ""
+                            else:
+                                # Simple values (strings, numbers, booleans)
+                                response_str = (
+                                    str(field_value)
+                                    .replace("\n", " ")
+                                    .replace("\r", " ")
+                                )
+                        else:
+                            # Response should be structured but isn't - leave empty
+                            response_str = ""
 
                     row.append(response_str)
 
