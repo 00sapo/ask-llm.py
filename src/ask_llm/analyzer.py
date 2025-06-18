@@ -98,11 +98,12 @@ class DocumentAnalyzer:
                     pdf_data = f.read()
                     if self.verbose:
                         print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
-                    encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
-                    if self.verbose:
-                        print(
-                            f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
-                        )
+                    if pdf_data:
+                        encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
+                            )
             except Exception as e:
                 print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
                 return False

@@ -1,150 +1,186 @@
 #!/usr/bin/env python3
 
-import argparse
-import sys
 import os
 import json
+from typing import List, Optional
+from pathlib import Path
+
+import typer
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .analyzer import DocumentAnalyzer
 
+app = typer.Typer(
+    name="ask-llm",
+    help="Process PDF files and BibTeX bibliographies using the Gemini API with structured output.",
+    add_completion=False,
+)
+console = Console()
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Process PDF files and BibTeX bibliographies using the Gemini API with structured output."
-    )
-    parser.add_argument(
-        "files",
-        nargs="*",
+
+@app.command()
+def main(
+    files: List[Path] = typer.Argument(
+        ...,
         help="PDF files and/or BibTeX files to process",
-    )
-    parser.add_argument(
+        exists=True,
+    ),
+    no_clear: bool = typer.Option(
+        False,
         "--no-clear",
-        action="store_true",
         help="Do not clear output files before processing (append mode)",
-    )
-    parser.add_argument(
+    ),
+    model: Optional[str] = typer.Option(
+        None,
         "--model",
-        type=str,
-        default=None,
         help="Override Gemini model (default: gemini-2.5-flash-preview-05-20)",
-    )
-    parser.add_argument(
+    ),
+    query: Optional[str] = typer.Option(
+        None,
         "--query",
-        type=str,
-        default=None,
         help="Override query prompt (default: contents of query.txt)",
-    )
-    parser.add_argument(
+    ),
+    report: Optional[Path] = typer.Option(
+        None,
         "--report",
-        type=str,
-        default=None,
         help="Override report output file (default: analysis_report.json, use .csv extension for CSV format)",
-    )
-    parser.add_argument(
+    ),
+    log: Optional[Path] = typer.Option(
+        None,
         "--log",
-        type=str,
-        default=None,
         help="Override log output file (default: log.txt)",
-    )
-    parser.add_argument(
+    ),
+    processed_list: Optional[Path] = typer.Option(
+        None,
         "--processed-list",
-        type=str,
-        default=None,
         help="Override processed files list output (default: processed_files.txt)",
-    )
-    parser.add_argument(
+    ),
+    google_search: bool = typer.Option(
+        False,
         "--google-search",
-        action="store_true",
         help="Enable Google Search grounding for all queries",
-    )
-    parser.add_argument(
+    ),
+    verbose: bool = typer.Option(
+        False,
         "--verbose",
         "-v",
-        action="store_true",
         help="Enable verbose debug output",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="ask-llm 1.0",
-    )
+    ),
+) -> None:
+    """Process PDF files and BibTeX bibliographies using the Gemini API."""
 
-    args = parser.parse_args()
+    if verbose:
+        console.print("[DEBUG] Starting ask-llm with verbose output", style="dim")
+        console.print(f"[DEBUG] Processing {len(files)} files", style="dim")
 
-    if not args.files:
-        parser.print_help()
-        print(
-            "\nExamples:\n"
-            "  ask-llm paper1.pdf paper2.pdf\n"
-            "  ask-llm bibliography.bib\n"
-            "  ask-llm paper1.pdf bibliography.bib paper2.pdf\n"
-            "  ask-llm --google-search paper1.pdf\n"
-            "  ask-llm --verbose paper1.pdf\n"
-        )
-        sys.exit(1)
+    # Convert Path objects to strings for compatibility
+    file_paths = [str(f) for f in files]
 
     # Patch DocumentAnalyzer with CLI overrides
     class CLIAnalyzer(DocumentAnalyzer):
         def __init__(self):
-            super().__init__(verbose=args.verbose)
-            if args.model:
-                self.model = args.model
-                if self.verbose:
-                    print(f"[DEBUG] Model overridden to: {args.model}")
-            if args.query:
+            super().__init__(verbose=verbose)
+
+            if model:
+                self.model = model
+                if verbose:
+                    console.print(f"[DEBUG] Model overridden to: {model}", style="dim")
+
+            if query:
                 query_params = {}
-                if args.google_search:
+                if google_search:
                     query_params["google_search"] = True
                 self.queries = [
-                    {"text": args.query, "params": query_params, "structure": None}
+                    {"text": query, "params": query_params, "structure": None}
                 ]
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Query overridden with {len(query_params)} parameters"
+                if verbose:
+                    console.print(
+                        f"[DEBUG] Query overridden with {len(query_params)} parameters",
+                        style="dim",
                     )
-            elif args.google_search:
+            elif google_search:
                 # Enable Google Search for all queries if --google-search flag is used
-                for query in self.queries:
-                    if "google_search" not in query["params"]:
-                        query["params"]["google_search"] = True
-                if self.verbose:
-                    print("[DEBUG] Google Search enabled for all queries via CLI flag")
-            if args.report:
-                self.report_file = args.report
-                if self.verbose:
-                    print(f"[DEBUG] Report file overridden to: {args.report}")
-            if args.log:
-                self.logfile = args.log
-                if self.verbose:
-                    print(f"[DEBUG] Log file overridden to: {args.log}")
-            if args.processed_list:
-                self.processed_list = args.processed_list
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Processed list file overridden to: {args.processed_list}"
+                for query_obj in self.queries:
+                    if "google_search" not in query_obj.params:
+                        query_obj.params["google_search"] = True
+                if verbose:
+                    console.print(
+                        "[DEBUG] Google Search enabled for all queries via CLI flag",
+                        style="dim",
                     )
-            if args.no_clear:
+
+            if report:
+                self.report_file = str(report)
+                if verbose:
+                    console.print(
+                        f"[DEBUG] Report file overridden to: {report}", style="dim"
+                    )
+
+            if log:
+                self.logfile = str(log)
+                if verbose:
+                    console.print(f"[DEBUG] Log file overridden to: {log}", style="dim")
+
+            if processed_list:
+                self.processed_list = str(processed_list)
+                if verbose:
+                    console.print(
+                        f"[DEBUG] Processed list file overridden to: {processed_list}",
+                        style="dim",
+                    )
+
+            if no_clear:
                 # Load existing JSON if it exists
                 if os.path.exists(self.report_file):
                     try:
                         with open(self.report_file, "r", encoding="utf-8") as f:
                             self.results = json.load(f)
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Loaded existing JSON with {len(self.results['documents'])} documents"
+                        if verbose:
+                            console.print(
+                                f"[DEBUG] Loaded existing JSON with {len(self.results['documents'])} documents",
+                                style="dim",
                             )
                     except (json.JSONDecodeError, FileNotFoundError):
-                        if self.verbose:
-                            print(
-                                "[DEBUG] Could not load existing JSON, starting fresh"
+                        if verbose:
+                            console.print(
+                                "[DEBUG] Could not load existing JSON, starting fresh",
+                                style="dim",
                             )
                         self._initialize_json_structure()
                 else:
                     self._initialize_json_structure()
 
-    analyzer = CLIAnalyzer()
-    analyzer.process_files(args.files)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Processing files...", total=None)
+
+            analyzer = CLIAnalyzer()
+            analyzer.process_files(file_paths)
+
+            progress.update(task, description="✅ Processing complete!")
+
+        console.print("🎉 Processing completed successfully!", style="bold green")
+
+    except KeyboardInterrupt:
+        console.print("\n❌ Processing interrupted by user", style="bold red")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"❌ Error: {e}", style="bold red")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+@app.command()
+def version():
+    """Show version information."""
+    console.print("ask-llm version 1.0.0", style="bold blue")
 
 
 if __name__ == "__main__":
-    main()
+    app()

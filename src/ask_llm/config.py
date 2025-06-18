@@ -1,18 +1,55 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import re
 import sys
 import subprocess
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
+
+
+class QueryConfig(BaseModel):
+    """Configuration for a single query"""
+
+    text: str
+    params: Dict[str, Any] = Field(default_factory=dict)
+    structure: Optional[Dict[str, Any]] = None
+
+
+class Settings(BaseSettings):
+    """Application settings with environment variable support"""
+
+    api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
+    model: str = Field("gemini-2.5-flash-preview-05-20", env="GEMINI_MODEL")
+    base_url: str = Field(
+        "https://generativelanguage.googleapis.com/v1beta", env="GEMINI_BASE_URL"
+    )
+    query_file: str = Field("query.md", env="QUERY_FILE")
+    report_file: str = Field("analysis_report.json", env="REPORT_FILE")
+    log_file: str = Field("log.txt", env="LOG_FILE")
+    processed_list: str = Field("processed_files.txt", env="PROCESSED_LIST")
+    verbose: bool = Field(False, env="VERBOSE")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
 
 class ConfigManager:
     def __init__(self, verbose=False):
         self.verbose = verbose
+        self.settings = Settings(verbose=verbose)
 
-    def get_api_key(self):
-        """Get API key using rbw"""
+    def get_api_key(self) -> str:
+        """Get API key from environment or rbw"""
+        if self.settings.api_key:
+            if self.verbose:
+                print("[DEBUG] Using API key from environment variable")
+            return self.settings.api_key
+
         if self.verbose:
             print("[DEBUG] Retrieving API key using rbw")
         try:
@@ -24,17 +61,23 @@ class ConfigManager:
             return result.stdout.strip()
         except subprocess.CalledProcessError:
             print("Error: Could not retrieve API key using 'rbw get gemini_key'")
+            print(
+                "Tip: Set GEMINI_API_KEY environment variable or ensure rbw is configured"
+            )
             sys.exit(1)
 
-    def load_queries(self, filename):
+    def load_queries(self, filename: Optional[str] = None) -> List[QueryConfig]:
         """Load and parse queries from text file"""
+        query_file = filename or self.settings.query_file
+
         if self.verbose:
-            print(f"[DEBUG] Loading queries from {filename}")
+            print(f"[DEBUG] Loading queries from {query_file}")
+
         try:
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(query_file, "r", encoding="utf-8") as f:
                 content = f.read().strip()
         except FileNotFoundError:
-            print(f"Error: {filename} not found")
+            print(f"Error: {query_file} not found")
             sys.exit(1)
 
         # Split by 3 or more equals signs
@@ -111,9 +154,10 @@ class ConfigManager:
                     )
 
             if query_text:
-                queries.append(
-                    {"text": query_text, "params": params, "structure": structure}
+                query_config = QueryConfig(
+                    text=query_text, params=params, structure=structure
                 )
+                queries.append(query_config)
                 if self.verbose:
                     print(
                         f"[DEBUG] Added query {len(queries)} with {len(params)} parameters and {'structure' if structure else 'no structure'}"
@@ -123,16 +167,19 @@ class ConfigManager:
             print(f"[DEBUG] Total queries loaded: {len(queries)}")
         return queries
 
-    def load_json(self, filename):
+    def load_json(self, filename: str) -> Optional[Dict[str, Any]]:
         """Load JSON file"""
         if self.verbose:
             print(f"[DEBUG] Attempting to load JSON from {filename}")
-        if not os.path.exists(filename):
+
+        file_path = Path(filename)
+        if not file_path.exists():
             if self.verbose:
                 print(f"[DEBUG] File {filename} does not exist")
             return None
+
         try:
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if self.verbose:
                     print(
