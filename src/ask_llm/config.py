@@ -110,6 +110,8 @@ class ConfigManager:
             print(f"[DEBUG] Found {len(query_sections)} query sections")
 
         queries = []
+        accumulated_params = {}  # Track parameters across queries
+
         for section_idx, section in enumerate(query_sections):
             section = section.strip()
             if not section:
@@ -122,7 +124,7 @@ class ConfigManager:
 
             # Parse parameters and query text
             lines = section.split("\n")
-            params = {}
+            current_params = {}  # Parameters for this specific query
             query_lines = []
 
             for line in lines:
@@ -145,27 +147,43 @@ class ConfigManager:
 
                     if key == "temperature":
                         try:
-                            params[key] = float(value)
+                            current_params[key] = float(value)
                         except ValueError:
                             print(
                                 f"Warning: Invalid temperature value '{value}', ignoring"
                             )
                     elif key == "model_name":
-                        params["model"] = value
+                        current_params["model"] = value
                     elif key == "google_search":
                         # Parse boolean values
                         if value.lower() in ["true", "yes", "1", "on"]:
-                            params["google_search"] = True
+                            current_params["google_search"] = True
                         elif value.lower() in ["false", "no", "0", "off"]:
-                            params["google_search"] = False
+                            current_params["google_search"] = False
                         else:
                             print(
                                 f"Warning: Invalid google-search value '{value}', should be true/false"
                             )
                     elif key == "filter_on":
-                        params["filter_on"] = value
+                        current_params["filter_on"] = value
                 else:
                     query_lines.append(line)
+
+            # Merge accumulated parameters with current parameters
+            # Current parameters override accumulated ones
+            merged_params = accumulated_params.copy()
+            merged_params.update(current_params)
+
+            # Update accumulated parameters for next query
+            accumulated_params.update(current_params)
+
+            if self.verbose and current_params:
+                print(
+                    f"[DEBUG] Query {section_idx + 1} new parameters: {current_params}"
+                )
+                print(
+                    f"[DEBUG] Query {section_idx + 1} effective parameters: {merged_params}"
+                )
 
             query_text = "\n".join(query_lines).strip()
 
@@ -187,9 +205,9 @@ class ConfigManager:
             if query_text:
                 query_config = QueryConfig(
                     text=query_text,
-                    params=params,
+                    params=merged_params,  # Use merged parameters instead of current_params
                     structure=structure,
-                    filter_on=params.get("filter_on"),
+                    filter_on=merged_params.get("filter_on"),  # Use merged parameters
                 )
 
                 # Validate filter_on usage
@@ -202,7 +220,7 @@ class ConfigManager:
                 queries.append(query_config)
                 if self.verbose:
                     print(
-                        f"[DEBUG] Added query {len(queries)} with {len(params)} parameters, {'structure' if structure else 'no structure'}, and {'filter_on=' + query_config.filter_on if query_config.filter_on else 'no filter'}"
+                        f"[DEBUG] Added query {len(queries)} with {len(merged_params)} parameters, {'structure' if structure else 'no structure'}, and {'filter_on=' + query_config.filter_on if query_config.filter_on else 'no filter'}"
                     )
 
         if self.verbose:

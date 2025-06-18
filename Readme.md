@@ -169,13 +169,17 @@ ask-llm -v paper1.pdf
   papers. If the field is `true`, the document will be included in the final report, otherwise it
   will be excluded.
 
+  Options are kept for the subsequent queries, so you can specify them only once
+  at the beginning, change them for a certain query, and then revert to the previous value
+  afterward.
+
   Example `query.md`:
 
   ```markdown
   Model-Name: gemini-1.5-flash-latest
   Temperature: 0.7
   Google-Search: true
-  ```json
+  \`\`\`json
   {
     "type": "object",
     "properties": {
@@ -184,15 +188,16 @@ ask-llm -v paper1.pdf
     },
     "required": ["main_finding"]
   }
-  ```
+  \`\`\`
 
   Summarize the main contributions of this paper and extract up to 5 relevant keywords.
 
   ===
   Google-Search: false
   Identify the core methodology used in this research.
-
   ```
+
+  Further examples can be found in the `prompt-lib/` directory of this repository.
 
 ---
 
