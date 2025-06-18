@@ -87,11 +87,17 @@ class SemanticScholarClient:
         if not entry_key:
             entry_key = "SemanticScholarEntry"
 
-        # Extract fields
-        title = paper.get("title", "").strip()
-        abstract = paper.get("abstract", "").strip()
+        # Extract fields with None checks
+        title = paper.get("title") or ""
+        title = title.strip() if title else ""
+
+        abstract = paper.get("abstract") or ""
+        abstract = abstract.strip() if abstract else ""
+
         year = paper.get("year", "")
-        venue = paper.get("venue", "").strip()
+
+        venue = paper.get("venue") or ""
+        venue = venue.strip() if venue else ""
 
         # Format authors
         authors_list = paper.get("authors", [])
@@ -128,7 +134,7 @@ class SemanticScholarClient:
         if authors_str:
             bibtex_lines.append(f"  author = {{{authors_str}}},")
         if year:
-            bibtex_lines.append(f"  year = {{{year}}},")
+            bibtex_lines.append(f"  year = {{{str(year)}}},")
         if abstract:
             # Clean abstract for BibTeX - escape braces and remove problematic characters
             clean_abstract = (
