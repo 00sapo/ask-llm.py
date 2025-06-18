@@ -24,6 +24,7 @@ class DocumentAnalyzer:
         self.processed_list = "processed_files.txt"
         self.logfile = "log.txt"
         self.report_file = "analysis_report.json"
+        self.filtered_out_documents = []  # Track filtered out documents
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
@@ -133,19 +134,19 @@ class DocumentAnalyzer:
         for i, query_info in enumerate(self.queries):
             if self.verbose:
                 print(f"[DEBUG] Processing query {i + 1}/{len(self.queries)}")
-                print(f"[DEBUG] Query parameters: {query_info['params']}")
+                print(f"[DEBUG] Query parameters: {query_info.params}")
 
             # Create appropriate prompt and payload
             if pdf_data:
                 query_text = (
-                    f"I'm attaching the PDF file {actual_path}\n\n{query_info['text']}"
+                    f"I'm attaching the PDF file {actual_path}\n\n{query_info.text}"
                 )
                 payload = self.api_client.create_pdf_payload(encoded_pdf, query_text)
             else:
                 metadata_text = self.bibtex_processor.format_metadata_for_prompt(
                     metadata
                 )
-                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info['text']}"
+                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}"
                 payload = self.api_client.create_text_payload(query_text)
 
             # Apply query parameters to payload
@@ -175,7 +176,7 @@ class DocumentAnalyzer:
 
                 # Parse JSON response if structure was requested
                 parsed_response = response_content
-                query_structure = query_info.get("structure")
+                query_structure = query_info.structure
                 if query_structure:
                     try:
                         parsed_response = json.loads(response_content)
@@ -236,6 +237,113 @@ class DocumentAnalyzer:
             print(f"[DEBUG] No responses processed for {actual_path or bibtex_key}")
         return False
 
+    def _apply_filters(self):
+        """Apply filters sequentially based on query responses"""
+        if self.verbose:
+            print("[DEBUG] Applying filters to documents")
+
+        # Start with all documents
+        remaining_docs = self.report_manager.results["documents"][:]
+
+        for query_idx, query in enumerate(self.queries):
+            if not query.filter_on:
+                continue
+
+            if self.verbose:
+                print(
+                    f"[DEBUG] Applying filter on field '{query.filter_on}' for query {query_idx + 1}"
+                )
+
+            filtered_docs = []
+            newly_filtered = []
+
+            for doc in remaining_docs:
+                # Find the response for this query
+                query_response = None
+                for q in doc["queries"]:
+                    if q["query_id"] == query_idx + 1:
+                        query_response = q["response"]
+                        break
+
+                if query_response and isinstance(query_response, dict):
+                    field_value = query_response.get(query.filter_on)
+
+                    # Validate boolean type
+                    if not isinstance(field_value, bool):
+                        print(
+                            f"Error: Field '{query.filter_on}' in document {doc['id']} ({doc['bibtex_key']}) has non-boolean value: {field_value}"
+                        )
+                        sys.exit(1)
+
+                    if field_value:
+                        filtered_docs.append(doc)
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) passed filter"
+                            )
+                    else:
+                        newly_filtered.append(doc)
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) filtered out by {query.filter_on}=false"
+                            )
+                else:
+                    # If no response or not structured, filter out
+                    newly_filtered.append(doc)
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) filtered out (no structured response)"
+                        )
+
+            # Update remaining documents and track filtered out
+            remaining_docs = filtered_docs
+            self.filtered_out_documents.extend(newly_filtered)
+
+            if self.verbose:
+                print(
+                    f"[DEBUG] After filter on '{query.filter_on}': {len(remaining_docs)} remaining, {len(newly_filtered)} newly filtered"
+                )
+
+        # Update final results
+        self.report_manager.results["documents"] = remaining_docs
+        self.report_manager.results["metadata"]["total_documents"] = len(remaining_docs)
+        self.report_manager.results["metadata"]["filtered_out_count"] = len(
+            self.filtered_out_documents
+        )
+
+        if self.verbose:
+            print(
+                f"[DEBUG] Final filtering results: {len(remaining_docs)} documents remaining, {len(self.filtered_out_documents)} filtered out"
+            )
+
+    def _save_filtered_out_list(self):
+        """Save list of filtered out documents"""
+        if not self.filtered_out_documents:
+            if self.verbose:
+                print("[DEBUG] No documents were filtered out")
+            return
+
+        filtered_out_file = "filtered_out_documents.txt"
+        if self.verbose:
+            print(
+                f"[DEBUG] Saving {len(self.filtered_out_documents)} filtered out documents to {filtered_out_file}"
+            )
+
+        with open(filtered_out_file, "w", encoding="utf-8") as f:
+            f.write("# Documents filtered out by query filters\n")
+            f.write(f"# Total filtered out: {len(self.filtered_out_documents)}\n\n")
+
+            for doc in self.filtered_out_documents:
+                f.write(f"Document ID: {doc['id']}\n")
+                f.write(f"File Path: {doc['file_path']}\n")
+                f.write(f"BibTeX Key: {doc['bibtex_key']}\n")
+                f.write(
+                    f"Metadata Only: {'Yes' if doc['is_metadata_only'] else 'No'}\n"
+                )
+                f.write("-" * 40 + "\n")
+
+        print(f"Filtered out documents list saved to: {filtered_out_file}")
+
     def process_files(self, files):
         """Main processing logic"""
         if self.verbose:
@@ -268,7 +376,19 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Processing individual PDF: {pdf_file}")
             self.process_pdf(pdf_file)
 
+        # Apply filtering after all documents are processed
+        self._apply_filters()
+
+        # Generate filtered out list
+        self._save_filtered_out_list()
+
+        # Save final report after filtering
+        self.report_manager.save_report(self.report_file)
+
         print("\nProcessing complete!")
         print(f"Final report saved to: {self.report_file}")
         print(f"Log saved to: {self.logfile}")
         print(f"Processed files list: {self.processed_list}")
+
+        if self.filtered_out_documents:
+            print("Filtered out documents: filtered_out_documents.txt")

@@ -14,3 +14,4 @@ query.md
 report.csv
 src/ask_llm.egg-info
 uv.lock
+src/ask_llm/__pycache__

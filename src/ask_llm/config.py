@@ -17,6 +17,7 @@ class QueryConfig(BaseModel):
     text: str
     params: Dict[str, Any] = Field(default_factory=dict)
     structure: Optional[Dict[str, Any]] = None
+    filter_on: Optional[str] = None
 
 
 class Settings(BaseSettings):
@@ -128,7 +129,12 @@ class ConfigManager:
                 line = line.strip()
                 if ":" in line and any(
                     param in line.lower()
-                    for param in ["model-name:", "temperature:", "google-search:"]
+                    for param in [
+                        "model-name:",
+                        "temperature:",
+                        "google-search:",
+                        "filter-on:",
+                    ]
                 ):
                     key, value = line.split(":", 1)
                     key = key.strip().lower().replace("-", "_")
@@ -156,6 +162,8 @@ class ConfigManager:
                             print(
                                 f"Warning: Invalid google-search value '{value}', should be true/false"
                             )
+                    elif key == "filter_on":
+                        params["filter_on"] = value
                 else:
                     query_lines.append(line)
 
@@ -178,12 +186,23 @@ class ConfigManager:
 
             if query_text:
                 query_config = QueryConfig(
-                    text=query_text, params=params, structure=structure
+                    text=query_text,
+                    params=params,
+                    structure=structure,
+                    filter_on=params.get("filter_on"),
                 )
+
+                # Validate filter_on usage
+                if query_config.filter_on and not query_config.structure:
+                    print(
+                        f"Error: Query {len(queries) + 1} has filter-on but no structure defined"
+                    )
+                    sys.exit(1)
+
                 queries.append(query_config)
                 if self.verbose:
                     print(
-                        f"[DEBUG] Added query {len(queries)} with {len(params)} parameters and {'structure' if structure else 'no structure'}"
+                        f"[DEBUG] Added query {len(queries)} with {len(params)} parameters, {'structure' if structure else 'no structure'}, and {'filter_on=' + query_config.filter_on if query_config.filter_on else 'no filter'}"
                     )
 
         if self.verbose:

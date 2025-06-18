@@ -162,6 +162,10 @@ ask-llm -v paper1.pdf
   - **Google Search:** `Google-Search: <true|false>`
   - **JSON Output Structure:** An embedded JSON code block (```json ...```) defining the desired output schema.
   The rest of the text in a query section is treated as the prompt.
+  - **Filter on**: `Filter-On: <field_name>` (e.g., `Filter-On: main_finding`). When using JSON
+  output structure, you can set a boolean field to be used for filtering the collection of PDFs and
+  papers. If the field is `true`, the document will be included in the final report, otherwise it
+  will be excluded.
 
   Example `query.md`:
 

@@ -17,6 +17,7 @@ class ReportManager:
                 "generated": datetime.now().isoformat(),
                 "total_documents": 0,
                 "model_used": model,
+                "filtered_out_count": 0,
                 "queries": [],
             },
             "documents": [],
@@ -26,9 +27,10 @@ class ReportManager:
         for i, query_info in enumerate(queries):
             query_data = {
                 "id": i + 1,
-                "text": query_info["text"],
-                "parameters": query_info["params"],
-                "structure": query_info.get("structure"),
+                "text": query_info.text,
+                "parameters": query_info.params,
+                "structure": query_info.structure,
+                "filter_on": query_info.filter_on,
             }
             self.results["metadata"]["queries"].append(query_data)
 
