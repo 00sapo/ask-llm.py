@@ -159,11 +159,13 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   - `Temperature: <float_value>` (e.g., `0.7`)
   - `Google-Search: <true|false>` (enables Google Search grounding for the LLM)
   - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search) for advanced syntax. PDFs for found papers are searched using DuckDuckGo if not directly available from Semantic Scholar.)
-    - Additional Semantic Scholar parameters (e.g., `Limit: 5`, `Sort: citationCount:desc`, `Fields: title,authors,year`) can be included.
+    - Additional Semantic Scholar parameters (e.g., `Sort: citationCount:desc`, `Fields-of-study: Computer Science`) can be included.
   - `Filter-On: <field_name>` (for JSON output, filters documents where this boolean field in the response is `false`)
   - **JSON Output Structure:** Embed a ```json ...``` code block to define the desired output schema for the LLM.
 
-  Parameters persist to subsequent queries unless overridden. See `prompt-lib/` for more examples.
+  Parameter names are case-insensitive, and they generally persist to subsequent queries unless
+  overridden, except for *one-shot* parameters (currently `filter-on` and `Semantic-Scholar`). See
+  `prompt-lib/` for more examples.
 
   Basic `query.md` structure:
 
@@ -171,13 +173,13 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   Model-Name: gemini-1.5-flash-latest
   Temperature: 0.7
   Google-Search: true
-  \`\`\`json
+  ```json
   {
     "type": "object",
     "properties": { "main_finding": { "type": "string" } },
     "required": ["main_finding"]
   }
-  \`\`\`
+  ``\`
   Summarize the main contributions of this paper.
 
   ===
