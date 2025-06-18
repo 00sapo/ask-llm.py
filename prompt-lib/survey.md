@@ -1,15 +1,16 @@
 semantic-scholar: true
-limit: 300
+fields-of-study: Computer Science
 
-music + (similarity | k-NN | cluster*) + (symbolic | audio | text | lyrics)
+music + (similarity | k-NN | cluster*) + (symbolic | lyrics)
 
 ===
 semantic-scholar: true
-limit: 100
+fields-of-study: Computer Science
 
-(medieval | gregorian) + music + similarity
+(medieval | gregorian) + music + ( similarity | k-NN | cluster* )
 
 ===
+semantic-scholar: false
 model-name: gemini-2.5-flash
 temperature: 0.3
 google-search: false

@@ -33,7 +33,6 @@ class SemanticScholarClient:
             "query": query,
             "sort": "citationCount:desc",  # Default sort by citation count descending
             "fields": "title,abstract,authors,year,openAccessPdf,url,citationCount,venue,externalIds",
-            "limit": 100,  # Default limit
         }
 
         # Apply user-specified parameters
