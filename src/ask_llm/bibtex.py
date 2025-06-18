@@ -14,9 +14,11 @@ class BibtexProcessor:
         self.verbose = verbose
         self.auto_download_pdfs = auto_download_pdfs  # Keep for compatibility
 
-        # Configure bibtexparser
-        self.parser = BibTexParser(common_strings=True)
-        self.parser.customization = self._customize_entry
+    def _create_parser(self):
+        """Create a fresh parser instance"""
+        parser = BibTexParser(common_strings=True)
+        parser.customization = self._customize_entry
+        return parser
 
     def _customize_entry(self, record):
         """Customize entry parsing"""
@@ -25,44 +27,53 @@ class BibtexProcessor:
         record = editor(record)
         return record
 
+    def _extract_metadata_from_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract metadata from already-parsed BibTeX entry"""
+        bibtex_key = entry.get("ID", "")
+        metadata = {"bibtex_key": bibtex_key}
+
+        # Extract common fields
+        fields_to_extract = [
+            "title",
+            "author",
+            "year",
+            "abstract",
+            "journal",
+            "booktitle",
+        ]
+        for field in fields_to_extract:
+            if field in entry:
+                value = entry[field]
+                # Handle case where bibtexparser returns a list (e.g., for authors)
+                if isinstance(value, list):
+                    if field == "author":
+                        # Join authors with "and"
+                        value = " and ".join(str(author) for author in value)
+                    else:
+                        # For other list fields, join with semicolons
+                        value = "; ".join(str(item) for item in value)
+                # Clean up LaTeX formatting
+                value = self._clean_latex(value)
+                metadata[field] = value
+
+        if self.verbose:
+            print(
+                f"[DEBUG] Extracted {len(metadata) - 1} metadata fields for {bibtex_key}"
+            )
+
+        return metadata
+
     def extract_metadata(self, entry_text: str, bibtex_key: str) -> Dict[str, Any]:
-        """Extract metadata from a BibTeX entry"""
+        """Extract metadata from a BibTeX entry text (for single entry processing)"""
         metadata = {"bibtex_key": bibtex_key}
 
         # Parse using bibtexparser for better accuracy
         try:
-            bib_database = bibtexparser.loads(entry_text, parser=self.parser)
+            parser = self._create_parser()  # Create fresh parser
+            bib_database = bibtexparser.loads(entry_text, parser=parser)
             if bib_database.entries:
                 entry = bib_database.entries[0]
-
-                # Extract common fields
-                fields_to_extract = [
-                    "title",
-                    "author",
-                    "year",
-                    "abstract",
-                    "journal",
-                    "booktitle",
-                ]
-                for field in fields_to_extract:
-                    if field in entry:
-                        value = entry[field]
-                        # Handle case where bibtexparser returns a list (e.g., for authors)
-                        if isinstance(value, list):
-                            if field == "author":
-                                # Join authors with "and"
-                                value = " and ".join(str(author) for author in value)
-                            else:
-                                # For other list fields, join with semicolons
-                                value = "; ".join(str(item) for item in value)
-                        # Clean up LaTeX formatting
-                        value = self._clean_latex(value)
-                        metadata[field] = value
-
-                if self.verbose:
-                    print(
-                        f"[DEBUG] Extracted {len(metadata) - 1} metadata fields for {bibtex_key}"
-                    )
+                return self._extract_metadata_from_entry(entry)
 
         except Exception as e:
             if self.verbose:
@@ -143,8 +154,9 @@ class BibtexProcessor:
             with open(bibtex_file, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # Parse with bibtexparser
-            bib_database = bibtexparser.loads(content, parser=self.parser)
+            # Parse with fresh parser
+            parser = self._create_parser()
+            bib_database = bibtexparser.loads(content, parser=parser)
 
             updated_count = 0
             for entry in bib_database.entries:
@@ -192,9 +204,10 @@ class BibtexProcessor:
         pdf_mappings = []
 
         try:
-            # Try using bibtexparser first
+            # Use a fresh parser for the entire file
+            parser = self._create_parser()
             with open(file_path, "r", encoding="utf-8") as f:
-                bib_database = bibtexparser.load(f, parser=self.parser)
+                bib_database = bibtexparser.load(f, parser=parser)
 
             if self.verbose:
                 print(f"[DEBUG] Found {len(bib_database.entries)} BibTeX entries")
@@ -233,7 +246,10 @@ class BibtexProcessor:
                             # Use PDF path as URL for local files
                             url = pdf_path
 
-                # Reconstruct entry text for metadata extraction
+                # Extract metadata directly from parsed entry
+                metadata = self._extract_metadata_from_entry(entry)
+
+                # Reconstruct entry text for compatibility with existing code
                 entry_text = self._reconstruct_entry_text(entry)
 
                 pdf_mappings.append(
@@ -243,6 +259,7 @@ class BibtexProcessor:
                         "entry_text": entry_text,
                         "is_url": url
                         and (url.startswith("http://") or url.startswith("https://")),
+                        "metadata": metadata,  # Add pre-extracted metadata
                     }
                 )
 

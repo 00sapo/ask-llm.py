@@ -3,6 +3,7 @@
 import json
 from typing import Dict, Any, Tuple, Optional
 
+import requests
 import requests_cache
 
 from .config import ConfigManager, QueryConfig
@@ -142,7 +143,7 @@ class GeminiAPIClient:
 
             return response_data
 
-        except requests_cache.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:
             if self.verbose:
                 print(
                     f"[DEBUG] HTTP Error details: {e.response.status_code} - {e.response.reason}"
@@ -160,7 +161,7 @@ class GeminiAPIClient:
 
             raise Exception(f"HTTP Error {e.response.status_code}: {e.response.reason}")
 
-        except requests_cache.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as e:
             if self.verbose:
                 print(f"[DEBUG] Request exception: {type(e).__name__}: {e}")
             raise Exception(f"Request failed: {e}")

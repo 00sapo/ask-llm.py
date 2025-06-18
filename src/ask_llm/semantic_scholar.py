@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import requests
 import requests_cache
 import json
 from typing import Dict, Any, List
@@ -69,7 +70,7 @@ class SemanticScholarClient:
 
             return papers
 
-        except requests_cache.exceptions.RequestException as e:
+        except requests.exceptions.RequestException as e:
             if self.verbose:
                 print(f"[DEBUG] Semantic Scholar API error: {e}")
             raise Exception(f"Semantic Scholar API request failed: {e}")
