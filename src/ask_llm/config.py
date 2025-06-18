@@ -206,17 +206,37 @@ class ConfigManager:
                 else:
                     query_lines.append(line)
 
-            # Merge accumulated parameters with current parameters
+            # Define one-shot parameters that should not persist across queries
+            one_shot_params = {"semantic_scholar", "filter_on"}
+
+            # Separate current parameters into persistent and one-shot
+            persistent_params = {
+                k: v for k, v in current_params.items() if k not in one_shot_params
+            }
+            oneshot_params = {
+                k: v for k, v in current_params.items() if k in one_shot_params
+            }
+
+            # Merge accumulated parameters with current persistent parameters
             # Current parameters override accumulated ones
             merged_params = accumulated_params.copy()
-            merged_params.update(current_params)
+            merged_params.update(persistent_params)
+            merged_params.update(
+                oneshot_params
+            )  # Add one-shot params for this query only
 
-            # Update accumulated parameters for next query
-            accumulated_params.update(current_params)
+            # Update accumulated parameters for next query (only persistent params)
+            accumulated_params.update(persistent_params)
 
             if self.verbose and current_params:
                 print(
                     f"[DEBUG] Query {section_idx + 1} new parameters: {current_params}"
+                )
+                print(
+                    f"[DEBUG] Query {section_idx + 1} persistent params: {persistent_params}"
+                )
+                print(
+                    f"[DEBUG] Query {section_idx + 1} one-shot params: {oneshot_params}"
                 )
                 print(
                     f"[DEBUG] Query {section_idx + 1} effective parameters: {merged_params}"
