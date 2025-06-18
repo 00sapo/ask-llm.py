@@ -3,7 +3,7 @@
 import json
 from typing import Dict, Any, Tuple, Optional
 
-import requests
+import requests_cache
 
 from .config import ConfigManager, QueryConfig
 
@@ -16,13 +16,18 @@ class GeminiAPIClient:
         self.base_url = self.config.settings.base_url
         self.default_model = "gemini-2.5-flash"
 
-        # Configure requests session
-        self.session = requests.Session()
+        # Configure requests_cache session
+        self.session = requests_cache.CachedSession(
+            cache_name="gemini_api_cache",
+            expire_after=3600,  # Cache for 1 hour
+            backend="sqlite",
+        )
         self.session.headers.update({"Content-Type": "application/json"})
 
         if self.verbose:
             print(f"[DEBUG] Initialized API client with base URL: {self.base_url}")
             print(f"[DEBUG] Default model: {self.default_model}")
+            print("[DEBUG] Using requests_cache with SQLite backend")
 
     def create_pdf_payload(self, encoded_pdf: str, query_text: str) -> Dict[str, Any]:
         """Create payload for PDF processing"""
@@ -123,6 +128,11 @@ class GeminiAPIClient:
             if self.verbose:
                 print(f"[DEBUG] Response status: {response.status_code}")
                 print(f"[DEBUG] Response size: {len(response.text)} characters")
+                if hasattr(response, "from_cache"):
+                    cache_status = (
+                        "from cache" if response.from_cache else "fresh request"
+                    )
+                    print(f"[DEBUG] API request: {cache_status}")
 
             response.raise_for_status()
             response_data = response.json()
@@ -132,7 +142,7 @@ class GeminiAPIClient:
 
             return response_data
 
-        except requests.exceptions.HTTPError as e:
+        except requests_cache.exceptions.HTTPError as e:
             if self.verbose:
                 print(
                     f"[DEBUG] HTTP Error details: {e.response.status_code} - {e.response.reason}"
@@ -150,7 +160,7 @@ class GeminiAPIClient:
 
             raise Exception(f"HTTP Error {e.response.status_code}: {e.response.reason}")
 
-        except requests.exceptions.RequestException as e:
+        except requests_cache.exceptions.RequestException as e:
             if self.verbose:
                 print(f"[DEBUG] Request exception: {type(e).__name__}: {e}")
             raise Exception(f"Request failed: {e}")

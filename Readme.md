@@ -204,6 +204,8 @@ Default names (can be overridden via CLI options):
 - **`processed_files.txt`**: List of processed files/BibTeX keys.
 - **`filtered_out_documents.txt`**: List of documents excluded by `Filter-On` criteria in `query.md`.
 - **`semantic_scholar.bib`**: BibTeX entries for papers found by Semantic Scholar queries.
+- **\*.sqlite**: caches for the requests in order to respect retry. To zeroing the cache, delete the
+  `.sqlite` files corresponding to the requests that you want to reset.
 
 ### Report Structure Overview (`analysis_report.json`)
 

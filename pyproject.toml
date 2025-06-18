@@ -18,6 +18,7 @@ dependencies = [
   "pydantic-settings>=2.0.0",
   "rich>=13.0.0",
   "duckduckgo-search>=7.2.1",
+  "requests-cache>=1.2.1",
 ]
 classifiers = [
   "License :: OSI Approved :: MIT License",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import requests
+import requests_cache
 import json
 from typing import Dict, Any, List
 
@@ -12,7 +12,12 @@ class SemanticScholarClient:
             auto_download_pdfs  # Keep for compatibility but won't download
         )
         self.base_url = "https://api.semanticscholar.org/graph/v1"
-        self.session = requests.Session()
+        # Use requests_cache instead of requests
+        self.session = requests_cache.CachedSession(
+            cache_name="semantic_scholar_cache",
+            expire_after=1800,  # Cache for 30 minutes
+            backend="sqlite",
+        )
         self.session.headers.update({"Content-Type": "application/json"})
 
         if self.verbose:
@@ -20,6 +25,7 @@ class SemanticScholarClient:
                 f"[DEBUG] Initialized Semantic Scholar client with base URL: {self.base_url}"
             )
             print("[DEBUG] Using URL context instead of PDF downloads")
+            print("[DEBUG] Using requests_cache with SQLite backend")
 
     def search_papers(
         self, query: str, search_params: Dict[str, Any] = None
@@ -48,6 +54,11 @@ class SemanticScholarClient:
 
             if self.verbose:
                 print(f"[DEBUG] Response status: {response.status_code}")
+                if hasattr(response, "from_cache"):
+                    cache_status = (
+                        "from cache" if response.from_cache else "fresh request"
+                    )
+                    print(f"[DEBUG] API request: {cache_status}")
 
             response.raise_for_status()
             data = response.json()
@@ -58,7 +69,7 @@ class SemanticScholarClient:
 
             return papers
 
-        except requests.exceptions.RequestException as e:
+        except requests_cache.exceptions.RequestException as e:
             if self.verbose:
                 print(f"[DEBUG] Semantic Scholar API error: {e}")
             raise Exception(f"Semantic Scholar API request failed: {e}")

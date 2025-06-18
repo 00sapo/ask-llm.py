@@ -4,9 +4,10 @@ import os
 import re
 import tempfile
 import time
+import random
 from typing import Optional
 
-import requests
+import requests_cache
 from duckduckgo_search import DDGS
 
 
@@ -17,15 +18,22 @@ class PDFSearcher:
         self.download_pdfs = (
             download_pdfs  # New parameter to control download vs URL mode
         )
-        self.session = requests.Session()
+        # Use requests_cache instead of requests
+        self.session = requests_cache.CachedSession(
+            cache_name="pdf_search_cache",
+            expire_after=3600,  # Cache for 1 hour
+            backend="sqlite",
+        )
         self.session.headers.update(
             {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
         )
+        self.last_search_time = 0  # Track when we last made a search
 
         if self.verbose:
             print(f"[DEBUG] Initialized PDF searcher (enabled: {self.enabled})")
+            print("[DEBUG] Using requests_cache with SQLite backend")
             if self.enabled:
                 mode = "download" if self.download_pdfs else "URL-only"
                 print(f"[DEBUG] PDF searcher mode: {mode}")
@@ -41,6 +49,24 @@ class PDFSearcher:
             if self.verbose:
                 print("[DEBUG] No title provided for PDF search")
             return None
+
+        # Rate limiting: wait between 3-7 seconds since last search
+        current_time = time.time()
+        time_since_last = current_time - self.last_search_time
+        min_wait = 3.0  # Minimum 3 seconds between searches
+        max_wait = 7.0  # Maximum 7 seconds for randomization
+
+        if time_since_last < min_wait:
+            wait_time = (
+                min_wait - time_since_last + random.uniform(0, max_wait - min_wait)
+            )
+            if self.verbose:
+                print(
+                    f"[DEBUG] Rate limiting: waiting {wait_time:.1f} seconds before search"
+                )
+            time.sleep(wait_time)
+
+        self.last_search_time = time.time()
 
         # Clean title and authors for search
         clean_title = self._clean_search_term(title)
@@ -103,13 +129,10 @@ class PDFSearcher:
             print(f"[DEBUG] Searching DuckDuckGo with query: {query}")
 
         try:
-            # Add delay to be respectful
-            time.sleep(1)
-
-            # Use DDGS to search for text results
+            # Use DDGS to search for text results with reduced result count
             with DDGS() as ddgs:
                 results = ddgs.text(
-                    keywords=query, region="wt-wt", safesearch="off", max_results=10
+                    keywords=query, region="wt-wt", safesearch="off", max_results=1
                 )
 
                 if self.verbose:
@@ -148,6 +171,11 @@ class PDFSearcher:
                 print(f"[DEBUG] Checking page for PDF links: {page_url}")
 
             response = self.session.get(page_url, timeout=10)
+
+            if self.verbose and hasattr(response, "from_cache"):
+                cache_status = "from cache" if response.from_cache else "fresh request"
+                print(f"[DEBUG] Page request: {cache_status}")
+
             response.raise_for_status()
 
             # Look for PDF links in the HTML
@@ -194,6 +222,11 @@ class PDFSearcher:
 
             # Download with timeout and size limit
             response = self.session.get(url, timeout=30, stream=True)
+
+            if self.verbose and hasattr(response, "from_cache"):
+                cache_status = "from cache" if response.from_cache else "fresh download"
+                print(f"[DEBUG] PDF download: {cache_status}")
+
             response.raise_for_status()
 
             # Check content type
