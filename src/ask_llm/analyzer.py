@@ -157,10 +157,21 @@ class DocumentAnalyzer:
 
         if all_bibtex_entries:
             combined_bibtex = "\n\n".join(all_bibtex_entries)
+
+            # Save Semantic Scholar BibTeX to permanent file
+            semantic_scholar_file = "semantic_scholar.bib"
+            with open(semantic_scholar_file, "w", encoding="utf-8") as f:
+                f.write(combined_bibtex)
+
             if self.verbose:
                 print(
                     f"[DEBUG] Created combined BibTeX with {len(all_bibtex_entries)} entries"
                 )
+                print(
+                    f"[DEBUG] Saved Semantic Scholar BibTeX to: {semantic_scholar_file}"
+                )
+
+            print(f"Semantic Scholar BibTeX saved to: {semantic_scholar_file}")
             return combined_bibtex
         else:
             if self.verbose:
@@ -213,7 +224,6 @@ class DocumentAnalyzer:
         actual_path = None
         pdf_data = None
         metadata = None
-        is_temp_file = False
 
         if pdf_path:
             actual_path = self._find_pdf_file(
@@ -223,7 +233,6 @@ class DocumentAnalyzer:
 
             # Check if this is a temporary downloaded file
             if actual_path and tempfile.gettempdir() in actual_path:
-                is_temp_file = True
                 self.downloaded_pdfs.append(actual_path)
 
         if actual_path:
@@ -622,6 +631,9 @@ class DocumentAnalyzer:
 
         if self.filtered_out_documents:
             print("Filtered out documents: filtered_out_documents.txt")
+
+        if has_semantic_scholar:
+            print("Semantic Scholar BibTeX saved to: semantic_scholar.bib")
 
         # Clean up downloaded PDFs
         if self.downloaded_pdfs:
