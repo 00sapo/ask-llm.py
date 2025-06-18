@@ -130,6 +130,47 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] PDF search failed with error: {e}")
             return None
 
+    def _evaluate_filter(self, response, filter_field, document_data, query_id):
+        """Evaluate filter immediately after query processing.
+        Returns True if processing should continue, False if document should be filtered out."""
+
+        if not isinstance(response, dict):
+            # No structured response - filter out
+            document_data["is_filtered_out"] = True
+            document_data["filtered_at_query"] = query_id
+            document_data["filter_reason"] = (
+                f"No structured response for filter field '{filter_field}'"
+            )
+            if self.verbose:
+                print(
+                    f"[DEBUG] Document {document_data['id']} filtered out at query {query_id}: No structured response"
+                )
+            return False
+
+        field_value = response.get(filter_field)
+
+        if not isinstance(field_value, bool):
+            print(f"Error: Field '{filter_field}' has non-boolean value: {field_value}")
+            sys.exit(1)
+
+        if not field_value:  # False means filter out
+            document_data["is_filtered_out"] = True
+            document_data["filtered_at_query"] = query_id
+            document_data["filter_reason"] = (
+                f"Filter field '{filter_field}' evaluated to False"
+            )
+            if self.verbose:
+                print(
+                    f"[DEBUG] Document {document_data['id']} ({document_data['bibtex_key']}) filtered out at query {query_id}: {filter_field}=false"
+                )
+            return False
+
+        if self.verbose:
+            print(
+                f"[DEBUG] Document {document_data['id']} ({document_data['bibtex_key']}) passed filter at query {query_id}: {filter_field}=true"
+            )
+        return True  # Continue processing
+
     def _process_semantic_scholar_queries(self) -> str:
         """Process all Semantic Scholar queries and return combined BibTeX content"""
         if self.verbose:
@@ -362,7 +403,7 @@ class DocumentAnalyzer:
                     print(f"File not found: {pdf_path}", file=sys.stderr)
                     return False
 
-        # Initialize document structure
+        # Initialize document structure with new filtering fields
         document_data = {
             "id": len(self.report_manager.results["documents"]) + 1,
             "file_path": actual_path or pdf_path,
@@ -370,12 +411,23 @@ class DocumentAnalyzer:
             "is_metadata_only": pdf_source == "metadata_only",
             "is_url": is_url,
             "pdf_source": pdf_source,  # Track how the PDF was obtained
+            "is_filtered_out": False,  # NEW: Track if document was filtered during processing
+            "filtered_at_query": None,  # NEW: Which query caused the filtering
+            "filter_reason": None,  # NEW: Reason for filtering
             "queries": [],
         }
 
         successful_queries = 0
 
         for i, query_info in enumerate(self.queries):
+            # Skip Semantic Scholar queries when processing documents
+            if query_info.params.get("semantic_scholar", False):
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Skipping Semantic Scholar query {i + 1} for document processing"
+                    )
+                continue
+
             if self.verbose:
                 print(f"[DEBUG] Processing query {i + 1}/{len(self.queries)}")
                 print(f"[DEBUG] Query parameters: {query_info.params}")
@@ -450,6 +502,20 @@ class DocumentAnalyzer:
                 if self.verbose:
                     print(f"[DEBUG] Successfully processed query {i + 1}")
 
+                # NEW: Check for early termination based on filter
+                if query_info.filter_on:
+                    should_continue = self._evaluate_filter(
+                        parsed_response, query_info.filter_on, document_data, i + 1
+                    )
+                    if not should_continue:
+                        # Add to filtered documents list and stop processing
+                        self.filtered_out_documents.append(document_data)
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Early termination: document filtered out at query {i + 1}"
+                            )
+                        break  # Stop processing remaining queries
+
             except Exception as e:
                 print(
                     f"Error processing query {i + 1} for {actual_path or pdf_path or bibtex_key}: {e}",
@@ -459,124 +525,58 @@ class DocumentAnalyzer:
                     print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
                 continue
 
+        # Only add document to main results if it wasn't filtered out
         if successful_queries > 0:
-            self.report_manager.add_document(document_data)
+            if not document_data["is_filtered_out"]:
+                self.report_manager.add_document(document_data)
 
-            if self.verbose:
-                print(
-                    f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or pdf_path or bibtex_key}"
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or pdf_path or bibtex_key}"
+                    )
+
+                # Record processed file
+                with open(self.processed_list, "a", encoding="utf-8") as f:
+                    if actual_path:
+                        f.write(f"{actual_path}|{bibtex_key}\n")
+                    elif is_url:
+                        f.write(f"URL:{urls[0] if urls else pdf_path}|{bibtex_key}\n")
+                    else:
+                        f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
+
+                # Flush JSON and CSV output after each document
+                self.report_manager.save_json_report(self.json_report_file)
+                self.report_manager.save_csv_report(self.csv_report_file)
+
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
+                    )
+
+                display_path = (
+                    actual_path
+                    or (urls[0] if urls else pdf_path)
+                    or f"metadata for {bibtex_key}"
                 )
-
-            # Record processed file
-            with open(self.processed_list, "a", encoding="utf-8") as f:
-                if actual_path:
-                    f.write(f"{actual_path}|{bibtex_key}\n")
-                elif is_url:
-                    f.write(f"URL:{urls[0] if urls else pdf_path}|{bibtex_key}\n")
-                else:
-                    f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
-
-            # Flush JSON and CSV output after each document
-            self.report_manager.save_json_report(self.json_report_file)
-            self.report_manager.save_csv_report(self.csv_report_file)
-
-            if self.verbose:
-                print(
-                    f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
+                print(f"Successfully processed: {display_path}")
+                return True
+            else:
+                # Document was filtered out during processing
+                display_path = (
+                    actual_path
+                    or (urls[0] if urls else pdf_path)
+                    or f"metadata for {bibtex_key}"
                 )
-
-            display_path = (
-                actual_path
-                or (urls[0] if urls else pdf_path)
-                or f"metadata for {bibtex_key}"
-            )
-            print(f"Successfully processed: {display_path}")
-            return True
+                print(
+                    f"Filtered out during processing: {display_path} (at query {document_data['filtered_at_query']})"
+                )
+                return True  # Still consider it "processed" even though filtered
 
         if self.verbose:
             print(
                 f"[DEBUG] No responses processed for {actual_path or pdf_path or bibtex_key}"
             )
         return False
-
-    def _apply_filters(self):
-        """Apply filters sequentially based on query responses"""
-        if self.verbose:
-            print("[DEBUG] Applying filters to documents")
-
-        # Start with all documents
-        remaining_docs = self.report_manager.results["documents"][:]
-
-        for query_idx, query in enumerate(self.queries):
-            if not query.filter_on:
-                continue
-
-            if self.verbose:
-                print(
-                    f"[DEBUG] Applying filter on field '{query.filter_on}' for query {query_idx + 1}"
-                )
-
-            filtered_docs = []
-            newly_filtered = []
-
-            for doc in remaining_docs:
-                # Find the response for this query
-                query_response = None
-                for q in doc["queries"]:
-                    if q["query_id"] == query_idx + 1:
-                        query_response = q["response"]
-                        break
-
-                if query_response and isinstance(query_response, dict):
-                    field_value = query_response.get(query.filter_on)
-
-                    # Validate boolean type
-                    if not isinstance(field_value, bool):
-                        print(
-                            f"Error: Field '{query.filter_on}' in document {doc['id']} ({doc['bibtex_key']}) has non-boolean value: {field_value}"
-                        )
-                        sys.exit(1)
-
-                    if field_value:
-                        filtered_docs.append(doc)
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) passed filter"
-                            )
-                    else:
-                        newly_filtered.append(doc)
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) filtered out by {query.filter_on}=false"
-                            )
-                else:
-                    # If no response or not structured, filter out
-                    newly_filtered.append(doc)
-                    if self.verbose:
-                        print(
-                            f"[DEBUG] Document {doc['id']} ({doc['bibtex_key']}) filtered out (no structured response)"
-                        )
-
-            # Update remaining documents and track filtered out
-            remaining_docs = filtered_docs
-            self.filtered_out_documents.extend(newly_filtered)
-
-            if self.verbose:
-                print(
-                    f"[DEBUG] After filter on '{query.filter_on}': {len(remaining_docs)} remaining, {len(newly_filtered)} newly filtered"
-                )
-
-        # Update final results
-        self.report_manager.results["documents"] = remaining_docs
-        self.report_manager.results["metadata"]["total_documents"] = len(remaining_docs)
-        self.report_manager.results["metadata"]["filtered_out_count"] = len(
-            self.filtered_out_documents
-        )
-
-        if self.verbose:
-            print(
-                f"[DEBUG] Final filtering results: {len(remaining_docs)} documents remaining, {len(self.filtered_out_documents)} filtered out"
-            )
 
     def _save_filtered_out_list(self):
         """Save list of filtered out documents"""
@@ -604,6 +604,8 @@ class DocumentAnalyzer:
                 )
                 f.write(f"URL: {'Yes' if doc.get('is_url', False) else 'No'}\n")
                 f.write(f"PDF Source: {doc.get('pdf_source', 'unknown')}\n")
+                f.write(f"Filtered at Query: {doc.get('filtered_at_query', 'N/A')}\n")
+                f.write(f"Filter Reason: {doc.get('filter_reason', 'N/A')}\n")
                 f.write("-" * 40 + "\n")
 
         print(f"Filtered out documents list saved to: {filtered_out_file}")
@@ -729,13 +731,15 @@ class DocumentAnalyzer:
                     print(f"[DEBUG] Processing individual PDF: {pdf_file}")
                 self.process_pdf(pdf_file)
 
-            # Apply filtering after all documents are processed
-            self._apply_filters()
+            # Update filtered out count in metadata
+            self.report_manager.results["metadata"]["filtered_out_count"] = len(
+                self.filtered_out_documents
+            )
 
             # Generate filtered out list
             self._save_filtered_out_list()
 
-            # Save final report after filtering
+            # Save final report
             self.report_manager.save_json_report(self.json_report_file)
             self.report_manager.save_csv_report(self.csv_report_file)
 
