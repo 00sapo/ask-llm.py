@@ -50,6 +50,21 @@ class GeminiAPIClient:
             "generationConfig": {},
         }
 
+    def create_url_payload(self, query_text: str, urls: list) -> Dict[str, Any]:
+        """Create payload for URL processing with URL context tool"""
+        # Add URLs to the query text
+        if urls:
+            url_text = "\n".join([f"URL: {url}" for url in urls])
+            full_query = f"{query_text}\n\n{url_text}"
+        else:
+            full_query = query_text
+
+        return {
+            "contents": [{"parts": [{"text": full_query}]}],
+            "generationConfig": {},
+            "tools": [{"url_context": {}}],
+        }
+
     def apply_query_params(
         self, payload: Dict[str, Any], query_info: QueryConfig
     ) -> Dict[str, Any]:
@@ -59,15 +74,15 @@ class GeminiAPIClient:
         if self.verbose:
             print(f"[DEBUG] Using model: {model}")
 
-        # Add tools if Google Search is enabled
-        tools = []
+        # Initialize tools list if not present
+        if "tools" not in payload:
+            payload["tools"] = []
+
+        # Add Google Search tool if enabled
         if query_info.params.get("google_search", False):
-            tools.append({"googleSearch": {}})
+            payload["tools"].append({"googleSearch": {}})
             if self.verbose:
                 print("[DEBUG] Google Search tool enabled for this query")
-
-        if tools:
-            payload["tools"] = tools
 
         # Add temperature if specified
         if "temperature" in query_info.params:
@@ -157,6 +172,11 @@ class GeminiAPIClient:
             # Extract grounding metadata if available
             grounding_metadata = response_data["candidates"][0].get("groundingMetadata")
 
+            # Extract URL context metadata if available
+            url_context_metadata = response_data["candidates"][0].get(
+                "urlContextMetadata"
+            )
+
             if self.verbose and grounding_metadata:
                 print("[DEBUG] Found grounding metadata")
                 if "webSearchQueries" in grounding_metadata:
@@ -168,7 +188,21 @@ class GeminiAPIClient:
                         f"[DEBUG] Found {len(grounding_metadata['groundingChunks'])} grounding chunks"
                     )
 
-            return response_content, grounding_metadata
+            if self.verbose and url_context_metadata:
+                print("[DEBUG] Found URL context metadata")
+                if "urlMetadata" in url_context_metadata:
+                    print(
+                        f"[DEBUG] Found {len(url_context_metadata['urlMetadata'])} URL metadata entries"
+                    )
+
+            # Combine grounding metadata and URL context metadata
+            combined_metadata = {}
+            if grounding_metadata:
+                combined_metadata["grounding"] = grounding_metadata
+            if url_context_metadata:
+                combined_metadata["url_context"] = url_context_metadata
+
+            return response_content, combined_metadata if combined_metadata else None
 
         except (KeyError, IndexError):
             if self.verbose:

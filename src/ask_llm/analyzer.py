@@ -4,7 +4,6 @@ import json
 import base64
 import sys
 import os
-import tempfile
 from pathlib import Path
 
 from .config import ConfigManager
@@ -27,7 +26,6 @@ class DocumentAnalyzer:
         self.semantic_scholar_client = SemanticScholarClient(
             verbose=verbose, auto_download_pdfs=auto_download_pdfs
         )
-        self.downloaded_pdfs = []  # Track downloaded PDFs for cleanup
 
         # Initialize with default configuration
         self.processed_list = "processed_files.txt"
@@ -38,7 +36,7 @@ class DocumentAnalyzer:
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
-            print(f"[DEBUG] Auto PDF download: {self.auto_download_pdfs}")
+            print("[DEBUG] Using URL context instead of PDF downloads")
 
         # Load configuration
         self.queries = self.config.load_queries("query.md")
@@ -142,10 +140,6 @@ class DocumentAnalyzer:
                     all_bibtex_entries.append(bibtex_entry)
                     entry_counter += 1
 
-                    # Track downloaded PDFs for cleanup
-                    if paper.get("downloaded_pdf_path"):
-                        self.downloaded_pdfs.append(paper["downloaded_pdf_path"])
-
                 if self.verbose:
                     print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
 
@@ -216,59 +210,73 @@ class DocumentAnalyzer:
         return merged_content
 
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
-        """Process a single PDF file or BibTeX metadata with multiple queries"""
+        """Process a single PDF file, URL, or BibTeX metadata with multiple queries"""
         if self.verbose:
             print(f"[DEBUG] Starting processing of: {pdf_path}")
 
-        # Try to find PDF file first
-        actual_path = None
-        pdf_data = None
-        metadata = None
+        # Determine if this is a URL or a file path
+        is_url = pdf_path and (
+            pdf_path.startswith("http://") or pdf_path.startswith("https://")
+        )
 
-        if pdf_path:
-            actual_path = self._find_pdf_file(
-                pdf_path,
-                os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
-            )
-
-            # Check if this is a temporary downloaded file
-            if actual_path and tempfile.gettempdir() in actual_path:
-                self.downloaded_pdfs.append(actual_path)
-
-        if actual_path:
-            # Process PDF
-            try:
-                with open(actual_path, "rb") as f:
-                    pdf_data = f.read()
-                    if self.verbose:
-                        print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
-                    if pdf_data:
-                        encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
-                            )
-            except Exception as e:
-                print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
-                return False
+        if is_url:
+            if self.verbose:
+                print(f"[DEBUG] Processing URL: {pdf_path}")
+            # For URLs, we'll use the URL context API
+            urls = [pdf_path]
+            pdf_data = None
+            metadata = None
+            actual_path = None
         else:
-            # Fallback to metadata if PDF not found and we have BibTeX entry
-            if entry_text and bibtex_key:
-                metadata = self.bibtex_processor.extract_metadata(
-                    entry_text, bibtex_key
+            # Try to find PDF file first
+            actual_path = None
+            pdf_data = None
+            metadata = None
+            urls = []
+
+            if pdf_path:
+                actual_path = self._find_pdf_file(
+                    pdf_path,
+                    os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
                 )
-                if self.verbose:
-                    print(f"[DEBUG] Using metadata for {bibtex_key} (PDF not found)")
+
+            if actual_path:
+                # Process PDF
+                try:
+                    with open(actual_path, "rb") as f:
+                        pdf_data = f.read()
+                        if self.verbose:
+                            print(f"[DEBUG] Read PDF file: {len(pdf_data)} bytes")
+                        if pdf_data:
+                            encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
+                                )
+                except Exception as e:
+                    print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
+                    return False
             else:
-                print(f"File not found: {pdf_path}", file=sys.stderr)
-                return False
+                # Fallback to metadata if PDF not found and we have BibTeX entry
+                if entry_text and bibtex_key:
+                    metadata = self.bibtex_processor.extract_metadata(
+                        entry_text, bibtex_key
+                    )
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Using metadata for {bibtex_key} (PDF not found)"
+                        )
+                else:
+                    print(f"File not found: {pdf_path}", file=sys.stderr)
+                    return False
 
         # Initialize document structure
         document_data = {
             "id": len(self.report_manager.results["documents"]) + 1,
             "file_path": actual_path or pdf_path,
             "bibtex_key": bibtex_key,
-            "is_metadata_only": actual_path is None,
+            "is_metadata_only": actual_path is None and not is_url,
+            "is_url": is_url,
             "queries": [],
         }
 
@@ -280,12 +288,18 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Query parameters: {query_info.params}")
 
             # Create appropriate prompt and payload
-            if pdf_data:
+            if is_url:
+                # Use URL context for URLs
+                query_text = f"Analyze the content from this URL: {pdf_path}\n\n{query_info.text}"
+                payload = self.api_client.create_url_payload(query_text, urls)
+            elif pdf_data:
+                # Use PDF processing for local PDFs
                 query_text = (
                     f"I'm attaching the PDF file {actual_path}\n\n{query_info.text}"
                 )
                 payload = self.api_client.create_pdf_payload(encoded_pdf, query_text)
             else:
+                # Use metadata for entries without accessible content
                 metadata_text = self.bibtex_processor.format_metadata_for_prompt(
                     metadata
                 )
@@ -302,7 +316,7 @@ class DocumentAnalyzer:
                 # Log response
                 with open(self.logfile, "a", encoding="utf-8") as f:
                     f.write(
-                        f"=== Response for {actual_path or bibtex_key} (Query {i + 1}) ===\n"
+                        f"=== Response for {actual_path or pdf_path or bibtex_key} (Query {i + 1}) ===\n"
                     )
                     json.dump(response_data, f, indent=2)
                     f.write("\n\n")
@@ -343,7 +357,7 @@ class DocumentAnalyzer:
 
             except Exception as e:
                 print(
-                    f"Error processing query {i + 1} for {actual_path or bibtex_key}: {e}",
+                    f"Error processing query {i + 1} for {actual_path or pdf_path or bibtex_key}: {e}",
                     file=sys.stderr,
                 )
                 if self.verbose:
@@ -355,13 +369,15 @@ class DocumentAnalyzer:
 
             if self.verbose:
                 print(
-                    f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or bibtex_key}"
+                    f"[DEBUG] Successfully processed {successful_queries} queries for {actual_path or pdf_path or bibtex_key}"
                 )
 
             # Record processed file
             with open(self.processed_list, "a", encoding="utf-8") as f:
                 if actual_path:
                     f.write(f"{actual_path}|{bibtex_key}\n")
+                elif is_url:
+                    f.write(f"URL:{pdf_path}|{bibtex_key}\n")
                 else:
                     f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
 
@@ -374,13 +390,14 @@ class DocumentAnalyzer:
                     f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
                 )
 
-            print(
-                f"Successfully processed: {actual_path or f'metadata for {bibtex_key}'}"
-            )
+            display_path = actual_path or pdf_path or f"metadata for {bibtex_key}"
+            print(f"Successfully processed: {display_path}")
             return True
 
         if self.verbose:
-            print(f"[DEBUG] No responses processed for {actual_path or bibtex_key}")
+            print(
+                f"[DEBUG] No responses processed for {actual_path or pdf_path or bibtex_key}"
+            )
         return False
 
     def _apply_filters(self):
@@ -486,6 +503,7 @@ class DocumentAnalyzer:
                 f.write(
                     f"Metadata Only: {'Yes' if doc['is_metadata_only'] else 'No'}\n"
                 )
+                f.write(f"URL: {'Yes' if doc.get('is_url', False) else 'No'}\n")
                 f.write("-" * 40 + "\n")
 
         print(f"Filtered out documents list saved to: {filtered_out_file}")
@@ -539,13 +557,6 @@ class DocumentAnalyzer:
                         temp_merged_file
                     )
                     for mapping in pdf_mappings:
-                        # Track any downloaded PDFs
-                        if (
-                            mapping["pdf_path"]
-                            and tempfile.gettempdir() in mapping["pdf_path"]
-                        ):
-                            self.downloaded_pdfs.append(mapping["pdf_path"])
-
                         self.process_pdf(
                             mapping["pdf_path"],
                             mapping["bibtex_key"],
@@ -572,7 +583,6 @@ class DocumentAnalyzer:
                     temp_ss_file
                 )
                 for mapping in pdf_mappings:
-                    # Track any downloaded PDFs (these are already tracked from semantic scholar search)
                     self.process_pdf(
                         mapping["pdf_path"],
                         mapping["bibtex_key"],
@@ -593,13 +603,6 @@ class DocumentAnalyzer:
                 )
 
                 for mapping in pdf_mappings:
-                    # Track any downloaded PDFs
-                    if (
-                        mapping["pdf_path"]
-                        and tempfile.gettempdir() in mapping["pdf_path"]
-                    ):
-                        self.downloaded_pdfs.append(mapping["pdf_path"])
-
                     self.process_pdf(
                         mapping["pdf_path"],
                         mapping["bibtex_key"],
@@ -634,18 +637,6 @@ class DocumentAnalyzer:
 
         if has_semantic_scholar:
             print("Semantic Scholar BibTeX saved to: semantic_scholar.bib")
-
-        # Clean up downloaded PDFs
-        if self.downloaded_pdfs:
-            if self.verbose:
-                print(
-                    f"[DEBUG] Cleaning up {len(self.downloaded_pdfs)} downloaded PDFs"
-                )
-
-            from .pdf_search import PDFSearcher
-
-            pdf_searcher = PDFSearcher(verbose=self.verbose, enabled=True)
-            pdf_searcher.cleanup_temp_files(self.downloaded_pdfs)
 
         # Clean up temporary files if they exist
         temp_files = ["semantic_scholar_results.bib"] + [

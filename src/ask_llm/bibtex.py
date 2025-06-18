@@ -12,15 +12,7 @@ from bibtexparser.customization import convert_to_unicode, author, editor
 class BibtexProcessor:
     def __init__(self, verbose=False, auto_download_pdfs=True):
         self.verbose = verbose
-        self.auto_download_pdfs = auto_download_pdfs
-
-        # Initialize PDF searcher only if needed
-        if self.auto_download_pdfs:
-            from .pdf_search import PDFSearcher
-
-            self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=auto_download_pdfs)
-        else:
-            self.pdf_searcher = None
+        self.auto_download_pdfs = auto_download_pdfs  # Keep for compatibility
 
         # Configure bibtexparser
         self.parser = BibTexParser(common_strings=True)
@@ -130,9 +122,9 @@ class BibtexProcessor:
         return "\n".join(parts)
 
     def extract_pdfs_from_bibtex(self, bibtex_file: str) -> List[Dict[str, Any]]:
-        """Extract PDF paths and keys from BibTeX file"""
+        """Extract PDF paths and URLs from BibTeX file"""
         if self.verbose:
-            print(f"[DEBUG] Extracting PDFs from BibTeX file: {bibtex_file}")
+            print(f"[DEBUG] Extracting URLs from BibTeX file: {bibtex_file}")
 
         file_path = Path(bibtex_file)
         if not file_path.exists():
@@ -155,45 +147,44 @@ class BibtexProcessor:
                 if self.verbose:
                     print(f"[DEBUG] Processing BibTeX entry: {bibtex_key}")
 
-                # Look for file field
-                pdf_path = None
-                if "file" in entry:
+                # Look for URL first (either in url field or file field)
+                url = None
+                if "url" in entry:
+                    url = entry["url"]
+                    if self.verbose:
+                        print(f"[DEBUG] Found URL: {url} for key {bibtex_key}")
+                elif "file" in entry:
                     file_field = entry["file"]
-                    # Extract PDF path (first part before semicolon)
-                    pdf_match = re.search(r"^([^;:]+\.pdf)", file_field)
-                    if pdf_match:
-                        pdf_path = pdf_match.group(1)
-                        if self.verbose:
-                            print(f"[DEBUG] Found PDF: {pdf_path} for key {bibtex_key}")
-                elif self.auto_download_pdfs and self.pdf_searcher:
-                    # No file field, try to search for PDF
-                    title = entry.get("title", "")
-                    authors = entry.get("author", "")
-
-                    if title:
+                    # Check if file field contains a URL (http/https)
+                    url_match = re.search(r"(https?://[^\s;:]+)", file_field)
+                    if url_match:
+                        url = url_match.group(1)
                         if self.verbose:
                             print(
-                                f"[DEBUG] No file field found for {bibtex_key}, searching for PDF..."
+                                f"[DEBUG] Found URL in file field: {url} for key {bibtex_key}"
                             )
-
-                        pdf_path = self.pdf_searcher.search_pdf(title, authors)
-                        if pdf_path:
+                    else:
+                        # Extract PDF path (first part before semicolon) as fallback
+                        pdf_match = re.search(r"^([^;:]+\.pdf)", file_field)
+                        if pdf_match:
+                            pdf_path = pdf_match.group(1)
                             if self.verbose:
                                 print(
-                                    f"[DEBUG] Downloaded PDF for {bibtex_key}: {pdf_path}"
+                                    f"[DEBUG] Found PDF path: {pdf_path} for key {bibtex_key}"
                                 )
-                        else:
-                            if self.verbose:
-                                print(f"[DEBUG] No PDF found for {bibtex_key}")
+                            # Use PDF path as URL for local files
+                            url = pdf_path
 
                 # Reconstruct entry text for metadata extraction
                 entry_text = self._reconstruct_entry_text(entry)
 
                 pdf_mappings.append(
                     {
-                        "pdf_path": pdf_path,
+                        "pdf_path": url,  # Now contains URL or PDF path
                         "bibtex_key": bibtex_key,
                         "entry_text": entry_text,
+                        "is_url": url
+                        and (url.startswith("http://") or url.startswith("https://")),
                     }
                 )
 
@@ -207,7 +198,7 @@ class BibtexProcessor:
             pdf_mappings = self._extract_pdfs_regex(bibtex_file)
 
         if self.verbose:
-            print(f"[DEBUG] Extracted {len(pdf_mappings)} PDF mappings from BibTeX")
+            print(f"[DEBUG] Extracted {len(pdf_mappings)} URL/PDF mappings from BibTeX")
         return pdf_mappings
 
     def _reconstruct_entry_text(self, entry: Dict[str, str]) -> str:
@@ -225,7 +216,7 @@ class BibtexProcessor:
         return "\n".join(lines)
 
     def _extract_pdfs_regex(self, bibtex_file: str) -> List[Dict[str, Any]]:
-        """Fallback regex-based PDF extraction with PDF search"""
+        """Fallback regex-based URL/PDF extraction"""
         try:
             with open(bibtex_file, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -258,57 +249,50 @@ class BibtexProcessor:
             if self.verbose:
                 print(f"[DEBUG] Processing BibTeX entry: {bibtex_key}")
 
-            # Look for file field
-            pdf_path = None
-            title = ""
-            authors = ""
-
+            # Look for URL or file field
+            url = None
             for line in lines:
+                # Check for url field first
+                url_match = re.search(r'url\s*=\s*["{]([^"}]+)', line, re.IGNORECASE)
+                if url_match:
+                    url = url_match.group(1)
+                    if self.verbose:
+                        print(f"[DEBUG] Found URL: {url} for key {bibtex_key}")
+                    break
+
+                # Check for file field
                 file_match = re.search(r'file\s*=\s*["{]([^"}]+)', line)
                 if file_match:
                     file_path = file_match.group(1)
-                    # Extract PDF path (first part before semicolon)
-                    pdf_match = re.search(r"^([^;:]+\.pdf)", file_path)
-                    if pdf_match:
-                        pdf_path = pdf_match.group(1)
+                    # Check if it's a URL
+                    if file_path.startswith("http://") or file_path.startswith(
+                        "https://"
+                    ):
+                        url = file_path
                         if self.verbose:
-                            print(f"[DEBUG] Found PDF: {pdf_path} for key {bibtex_key}")
+                            print(
+                                f"[DEBUG] Found URL in file field: {url} for key {bibtex_key}"
+                            )
                         break
-
-                # Extract title and authors for potential PDF search
-                title_match = re.search(
-                    r'title\s*=\s*["{]([^"}]+)', line, re.IGNORECASE
-                )
-                if title_match:
-                    title = title_match.group(1)
-
-                author_match = re.search(
-                    r'author\s*=\s*["{]([^"}]+)', line, re.IGNORECASE
-                )
-                if author_match:
-                    authors = author_match.group(1)
-
-            # If no file field found and auto download is enabled, search for PDF
-            if not pdf_path and self.auto_download_pdfs and self.pdf_searcher and title:
-                if self.verbose:
-                    print(
-                        f"[DEBUG] No file field found for {bibtex_key}, searching for PDF..."
-                    )
-
-                pdf_path = self.pdf_searcher.search_pdf(title, authors)
-                if pdf_path:
-                    if self.verbose:
-                        print(f"[DEBUG] Downloaded PDF for {bibtex_key}: {pdf_path}")
-                else:
-                    if self.verbose:
-                        print(f"[DEBUG] No PDF found for {bibtex_key}")
+                    else:
+                        # Extract PDF path (first part before semicolon)
+                        pdf_match = re.search(r"^([^;:]+\.pdf)", file_path)
+                        if pdf_match:
+                            url = pdf_match.group(1)
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Found PDF path: {url} for key {bibtex_key}"
+                                )
+                            break
 
             # Store mapping with full entry text
             pdf_mappings.append(
                 {
-                    "pdf_path": pdf_path,
+                    "pdf_path": url,
                     "bibtex_key": bibtex_key,
                     "entry_text": full_entry,
+                    "is_url": url
+                    and (url.startswith("http://") or url.startswith("https://")),
                 }
             )
 
