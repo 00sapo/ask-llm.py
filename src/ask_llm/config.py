@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
     api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
+    api_key_command: str = Field("rbw get gemini_key", env="GEMINI_API_KEY_COMMAND")
     model: str = Field("gemini-2.5-flash-preview-05-20", env="GEMINI_MODEL")
     base_url: str = Field(
         "https://generativelanguage.googleapis.com/v1beta", env="GEMINI_BASE_URL"
@@ -44,25 +45,48 @@ class ConfigManager:
         self.settings = Settings(verbose=verbose)
 
     def get_api_key(self) -> str:
-        """Get API key from environment or rbw"""
+        """Get API key from environment or custom command"""
         if self.settings.api_key:
             if self.verbose:
                 print("[DEBUG] Using API key from environment variable")
             return self.settings.api_key
 
         if self.verbose:
-            print("[DEBUG] Retrieving API key using rbw")
+            print(
+                f"[DEBUG] Retrieving API key using command: {self.settings.api_key_command}"
+            )
         try:
+            # Split command string into list for subprocess
+            command_parts = self.settings.api_key_command.split()
             result = subprocess.run(
-                ["rbw", "get", "gemini_key"], capture_output=True, text=True, check=True
+                command_parts, capture_output=True, text=True, check=True
             )
             if self.verbose:
                 print("[DEBUG] API key retrieved successfully")
             return result.stdout.strip()
-        except subprocess.CalledProcessError:
-            print("Error: Could not retrieve API key using 'rbw get gemini_key'")
+        except subprocess.CalledProcessError as e:
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or ensure rbw is configured"
+                f"Error: Could not retrieve API key using '{self.settings.api_key_command}'"
+            )
+            print(f"Command failed with exit code {e.returncode}")
+            if e.stderr:
+                print(f"Error output: {e.stderr}")
+            print(
+                "Tip: Set GEMINI_API_KEY environment variable or configure GEMINI_API_KEY_COMMAND"
+            )
+            sys.exit(1)
+        except FileNotFoundError:
+            command_name = (
+                self.settings.api_key_command.split()[0]
+                if self.settings.api_key_command
+                else "command"
+            )
+            print(f"Error: Command not found: {command_name}")
+            print(
+                f"Make sure the command '{command_name}' is installed and in your PATH"
+            )
+            print(
+                "Tip: Set GEMINI_API_KEY environment variable or configure a different GEMINI_API_KEY_COMMAND"
             )
             sys.exit(1)
 
