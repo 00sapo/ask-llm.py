@@ -39,7 +39,7 @@ def main(
     report: Optional[Path] = typer.Option(
         None,
         "--report",
-        help="Override report output file (default: analysis_report.json, use .csv extension for CSV format)",
+        help="Override report output file (default: analysis_report.json and analysis_report.csv)",
     ),
     log: Optional[Path] = typer.Option(
         None,
@@ -132,10 +132,24 @@ def main(
                         )
 
                 if report:
-                    self.report_file = str(report)
+                    report_str = str(report)
+                    if report_str.endswith(".csv"):
+                        # If user specified CSV, use it for CSV and derive JSON name
+                        self.csv_report_file = report_str
+                        self.json_report_file = report_str.replace(".csv", ".json")
+                    elif report_str.endswith(".json"):
+                        # If user specified JSON, use it for JSON and derive CSV name
+                        self.json_report_file = report_str
+                        self.csv_report_file = report_str.replace(".json", ".csv")
+                    else:
+                        # If no extension, add both
+                        self.json_report_file = report_str + ".json"
+                        self.csv_report_file = report_str + ".csv"
+
                     if verbose:
                         console.print(
-                            f"[DEBUG] Report file overridden to: {report}", style="dim"
+                            f"[DEBUG] Report files overridden to: {self.json_report_file} and {self.csv_report_file}",
+                            style="dim",
                         )
 
                 if log:
@@ -155,9 +169,11 @@ def main(
 
                 if no_clear:
                     # Load existing JSON if it exists
-                    if os.path.exists(self.report_file):
+                    if os.path.exists(self.json_report_file):
                         try:
-                            with open(self.report_file, "r", encoding="utf-8") as f:
+                            with open(
+                                self.json_report_file, "r", encoding="utf-8"
+                            ) as f:
                                 self.report_manager.results = json.load(f)
                             if verbose:
                                 console.print(

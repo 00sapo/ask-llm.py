@@ -23,7 +23,8 @@ class DocumentAnalyzer:
         # Initialize with default configuration
         self.processed_list = "processed_files.txt"
         self.logfile = "log.txt"
-        self.report_file = "analysis_report.json"
+        self.json_report_file = "analysis_report.json"
+        self.csv_report_file = "analysis_report.csv"
         self.filtered_out_documents = []  # Track filtered out documents
 
         if self.verbose:
@@ -222,11 +223,14 @@ class DocumentAnalyzer:
                 else:
                     f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
 
-            # Flush JSON output after each document
-            self.report_manager.save_report(self.report_file)
+            # Flush JSON and CSV output after each document
+            self.report_manager.save_json_report(self.json_report_file)
+            self.report_manager.save_csv_report(self.csv_report_file)
 
             if self.verbose:
-                print(f"[DEBUG] Flushed results to {self.report_file}")
+                print(
+                    f"[DEBUG] Flushed results to {self.json_report_file} and {self.csv_report_file}"
+                )
 
             print(
                 f"Successfully processed: {actual_path or f'metadata for {bibtex_key}'}"
@@ -383,10 +387,12 @@ class DocumentAnalyzer:
         self._save_filtered_out_list()
 
         # Save final report after filtering
-        self.report_manager.save_report(self.report_file)
+        self.report_manager.save_json_report(self.json_report_file)
+        self.report_manager.save_csv_report(self.csv_report_file)
 
         print("\nProcessing complete!")
-        print(f"Final report saved to: {self.report_file}")
+        print(f"Final JSON report saved to: {self.json_report_file}")
+        print(f"Final CSV report saved to: {self.csv_report_file}")
         print(f"Log saved to: {self.logfile}")
         print(f"Processed files list: {self.processed_list}")
 
