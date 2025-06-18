@@ -48,7 +48,7 @@ class DocumentAnalyzer:
 
         # Initialize JSON structure
         self.report_manager.initialize_json_structure(
-            self.queries, self.api_client.model
+            self.queries, self.api_client.default_model
         )
 
     def _find_pdf_file(self, pdf_path, bibtex_dir=None):

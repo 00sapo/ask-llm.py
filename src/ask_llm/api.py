@@ -14,7 +14,7 @@ class GeminiAPIClient:
         self.config = ConfigManager(verbose=verbose)
         self.api_key = self.config.get_api_key()
         self.base_url = self.config.settings.base_url
-        self.model = self.config.settings.model
+        self.default_model = "gemini-2.5-flash"
 
         # Configure requests session
         self.session = requests.Session()
@@ -22,7 +22,7 @@ class GeminiAPIClient:
 
         if self.verbose:
             print(f"[DEBUG] Initialized API client with base URL: {self.base_url}")
-            print(f"[DEBUG] Default model: {self.model}")
+            print(f"[DEBUG] Default model: {self.default_model}")
 
     def create_pdf_payload(self, encoded_pdf: str, query_text: str) -> Dict[str, Any]:
         """Create payload for PDF processing"""
@@ -55,7 +55,7 @@ class GeminiAPIClient:
     ) -> Dict[str, Any]:
         """Apply query-specific parameters to payload"""
         # Use query-specific model or default
-        model = query_info.params.get("model", self.model)
+        model = query_info.params.get("model", self.default_model)
         if self.verbose:
             print(f"[DEBUG] Using model: {model}")
 
@@ -91,7 +91,7 @@ class GeminiAPIClient:
     ) -> Dict[str, Any]:
         """Make API request to Gemini"""
         # Use query-specific model or default
-        model = query_info.params.get("model", self.model)
+        model = query_info.params.get("model", self.default_model)
         url = f"{self.base_url}/models/{model}:generateContent"
         params = {"key": self.api_key}
 

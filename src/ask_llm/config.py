@@ -24,7 +24,6 @@ class Settings(BaseSettings):
 
     api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
     api_key_command: str = Field("rbw get gemini_key", env="GEMINI_API_KEY_COMMAND")
-    model: str = Field("gemini-2.5-flash-preview-05-20", env="GEMINI_MODEL")
     base_url: str = Field(
         "https://generativelanguage.googleapis.com/v1beta", env="GEMINI_BASE_URL"
     )
