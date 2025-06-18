@@ -47,6 +47,14 @@ class BibtexProcessor:
                 for field in fields_to_extract:
                     if field in entry:
                         value = entry[field]
+                        # Handle case where bibtexparser returns a list (e.g., for authors)
+                        if isinstance(value, list):
+                            if field == "author":
+                                # Join authors with "and"
+                                value = " and ".join(str(author) for author in value)
+                            else:
+                                # For other list fields, join with semicolons
+                                value = "; ".join(str(item) for item in value)
                         # Clean up LaTeX formatting
                         value = self._clean_latex(value)
                         metadata[field] = value
