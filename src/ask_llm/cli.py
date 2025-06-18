@@ -34,7 +34,7 @@ def main(
     no_pdf_download: bool = typer.Option(
         False,
         "--no-pdf-download",
-        help="Disable automatic PDF downloading for missing files",
+        help="Disable automatic PDF downloading for missing files and use context url instead",
     ),
     query_file: Optional[Path] = typer.Option(
         None,

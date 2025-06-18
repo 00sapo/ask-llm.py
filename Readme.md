@@ -2,6 +2,27 @@
 
 Automate boring stuffs in research with LLMs.
 
+## Table of Contents
+
+- [Name](#name)
+- [Synopsis](#synopsis)
+- [Description](#description)
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [Usage](#usage)
+  - [Command-Line Interface](#command-line-interface)
+  - [Quick Examples](#quick-examples)
+- [Input Files](#input-files)
+  - [`query.md`](#querymd-default-or-specify-with---query-file)
+  - [BibTeX Files (`.bib`)](#bibtex-files-bib)
+- [Output Files](#output-files)
+  - [Report Structure Overview (`analysis_report.json`)](#report-structure-overview-analysis_reportjson)
+- [Development](#development)
+- [TODO](#todo)
+- [License](#license)
+
+---
+
 ## NAME
 
 **ask-llm.py** — Analyze PDF documents (and optionally BibTeX bibliographies) using the Gemini LLM API, producing structured JSON reports. The installed command is typically `ask-llm`.
@@ -18,43 +39,27 @@ ask-llm [OPTIONS] [PDF|BIB]...
 
 ## DESCRIPTION
 
-**ask-llm.py** is a Python script for batch-analyzing PDF files (and optionally BibTeX bibliographies) using Google's Gemini LLM API. It sends each PDF (or its extracted metadata if the PDF is not found) to the API with user-defined prompts and optional JSON schemas, collects structured JSON responses (if specified), and generates a JSON report containing all results.
-
-The script supports:
-
-- Direct PDF file input.
-- Extraction and processing of PDFs referenced in `.bib` files. If a PDF is not found, analysis can proceed using its BibTeX metadata.
-- Multiple queries defined in a `query.md` file, each with its own parameters (e.g., model, temperature, Google Search enablement) and optional JSON output schema.
-- Google Search grounding for queries to enhance factual accuracy.
-- JSON output format for easy programmatic processing.
-- CSV output format (specify `.csv` extension) for spreadsheet analysis.
-- Logging of raw API responses.
-- Verbose output for debugging.
-- Customizable output filenames and an append mode for reports.
-
-This is especially useful for conducting systematic surveys and producing material for further LLM processing.
+**ask-llm** analyzes PDF documents and BibTeX bibliographies using Google's Gemini LLM API. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Semantic Scholar integration for paper discovery and Google Search for grounding. Ideal for systematic reviews and data extraction.
 
 ---
 
 ## INSTALLATION
 
-It is recommended to install **ask-llm** using `pipx` for a clean, isolated installation:
+The recommended way to install **ask-llm** is using `pipx`:
 
 ```sh
 pipx install ask-llm
 ```
 
-*(This assumes the package is available on PyPI as `ask-llm`.)*
+*(Assumes the package `ask-llm` is on PyPI.)*
 
-Alternatively, you can install directly from a Git repository:
+Or, install from a Git repository:
 
 ```sh
-pipx install git+https://github.com/your-org/ask-llm.git  # Replace with the actual repository URL
+pipx install git+https://github.com/your-org/ask-llm.git # Replace with actual URL
 ```
 
-Ensure `pipx` is installed on your system. If not, follow the [official pipx installation guide](https://pipx.pypa.io/stable/installation/).
-
-Python package dependencies (such as `typer`, `requests`, `pydantic`, `bibtexparser`) are managed by the packaging setup and will be installed automatically.
+Ensure `pipx` is installed ([official guide](https://pipx.pypa.io/stable/installation/)). Dependencies are handled automatically.
 
 ---
 
@@ -67,8 +72,9 @@ Python package dependencies (such as `typer`, `requests`, `pydantic`, `bibtexpar
 
 ## USAGE
 
-You should set up a `query.md` file, or use one of the examples provided in the `prompt-lib/`
-directory of this repo. The following is the CLI interface.
+First, set up a `query.md` file (see [Input Files](#input-files) section or examples in `prompt-lib/`). Then, use the command-line interface:
+
+### Command-Line Interface
 
 ```sh
  Usage: ask-llm [OPTIONS] [FILES]... COMMAND [ARGS]...
@@ -89,7 +95,7 @@ directory of this repo. The following is the CLI interface.
 │ --no-clear                       Do not clear output files before processing    │
 │                                  (append mode)                                  │
 │ --no-pdf-download                Disable automatic PDF downloading for missing  │
-│                                  files                                          │
+│                                  files and use context url instead                                          │
 │ --query-file               PATH  Override query file (default: query.md)        │
 │                                  [default: None]                                │
 │ --report                   PATH  Override report output file (default:          │
@@ -117,87 +123,49 @@ directory of this repo. The following is the CLI interface.
 ╰─────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-### Basic PDF Analysis
+### Quick Examples
 
-```sh
-ask-llm paper1.pdf paper2.pdf
-```
+1. **Analyze PDFs:**
 
-### Analyze PDFs Referenced in a BibTeX File
+    ```sh
+    ask-llm paper1.pdf paper2.pdf
+    ```
 
-```sh
-ask-llm references.bib
-```
+2. **Analyze PDFs from a BibTeX file:**
 
-### Mix PDFs and BibTeX Files
+    ```sh
+    ask-llm references.bib
+    ```
 
-```sh
-ask-llm paper1.pdf references.bib paper2.pdf
-```
+3. **Use Semantic Scholar (queries defined in `query.md`):**
 
-### Specify a Custom Query File
+    ```sh
+    ask-llm
+    ```
 
-```sh
-ask-llm --query-file custom_query.md paper1.pdf
-```
+4. **Custom query file and CSV output:**
 
-### Use Semantic Scholar for searching papers
-
-```sh
-ask-llm --query-file custom_query.md
-```
-
-or even just
-
-```sh
-ask-llm
-```
-
-This requires proper queries in the input file (see [INPUT FILES](#input-files) section).
-
-### Use Google Search for Grounding
-
-```sh
-ask-llm --google-search paper1.pdf
-```
-
-### Generate CSV Output
-
-```sh
-ask-llm --report results.csv paper1.pdf
-```
+    ```sh
+    ask-llm --query-file custom_queries.md --report results.csv my_document.pdf
+    ```
 
 ---
 
 ## INPUT FILES
 
-- **query.md** (default name)
-  A text file defining one or more queries to be run against each document. Queries are separated by three or more equals signs (`===`).
-  Each query can specify:
-  - **Model Name:** `Model-Name: <model_identifier>` (e.g., `gemini-1.5-pro-latest`)
-  - **Temperature:** `Temperature: <float_value>` (e.g., `0.5`)
-  - **Google Search:** `Google-Search: <true|false>`
-  - **JSON Output Structure:** An embedded JSON code block (```json ...```) defining the desired output schema.
-  The rest of the text in a query section is treated as the prompt.
-  - **Filter on**: `Filter-On: <field_name>` (e.g., `Filter-On: main_finding`). When using JSON
-  output structure, you can set a boolean field to be used for filtering the collection of PDFs and
-  papers. If the field is `true`, the document will be included in the final report, otherwise it
-  will be excluded.
-  - **Semantic Scholar:** `Semantic-Scholar: <true|false>` to enable or disable searching for papers
-  on Semantic Scholar. If enabled, no LLM will be involved and query text will be used to search
-  papers on Semantic Scholar. The retrieved papers will be merged to the provided bibtex or PDF
-  files and used in subsequent queries. You can use any further search option and query logical
-  operators as described in the Semantic Scholar API
-  [docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search).
-  By default, results will be sorted by citation count. Since Semantic Scholar doesn't expose the
-  PDF urls that are viewable from the html pages, we will search for PDF files using duckduckgo. Automatic download of PDF
-  files can be disabled with `--no-pdf-download`.
+- **`query.md`** (default, or specify with `--query-file`)
+  Defines queries to run on each document. Queries are separated by three or more equals signs (`===`). Each query section includes the prompt text and can specify parameters:
+  - `Model-Name: <model_identifier>` (e.g., `gemini-1.5-pro-latest`)
+  - `Temperature: <float_value>` (e.g., `0.7`)
+  - `Google-Search: <true|false>` (enables Google Search grounding for the LLM)
+  - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search) for advanced syntax. PDFs for found papers are searched using DuckDuckGo if not directly available from Semantic Scholar.)
+    - Additional Semantic Scholar parameters (e.g., `Limit: 5`, `Sort: citationCount:desc`, `Fields: title,authors,year`) can be included.
+  - `Filter-On: <field_name>` (for JSON output, filters documents where this boolean field in the response is `false`)
+  - **JSON Output Structure:** Embed a ```json ...``` code block to define the desired output schema for the LLM.
 
-  Options are kept for the subsequent queries, so you can specify them only once
-  at the beginning, change them for a certain query, and then revert to the previous value
-  afterward.
+  Parameters persist to subsequent queries unless overridden. See `prompt-lib/` for more examples.
 
-  Example `query.md`:
+  Basic `query.md` structure:
 
   ```markdown
   Model-Name: gemini-1.5-flash-latest
@@ -206,62 +174,56 @@ ask-llm --report results.csv paper1.pdf
   \`\`\`json
   {
     "type": "object",
-    "properties": {
-      "main_finding": { "type": "string" },
-      "confidence_score": { "type": "number" }
-    },
+    "properties": { "main_finding": { "type": "string" } },
     "required": ["main_finding"]
   }
   \`\`\`
-
-  Summarize the main contributions of this paper and extract up to 5 relevant keywords.
+  Summarize the main contributions of this paper.
 
   ===
-  Google-Search: false
-  Identify the core methodology used in this research.
+  Semantic-Scholar: true
+  Limit: 10 # Search for 10 papers
+
+  Find recent papers on LLM applications in systematic reviews.
   ```
 
-  Further examples can be found in the `prompt-lib/` directory of this repository.
-
-- **bibtex**: Bibtex exported by Zotero, using `include files` option are supported. This means that
-  PDF file paths can stay in a `file` field relative to the BibTeX file. If no PDF file is found,
-  duckduckgo will be used to search for the PDF file using the BibTeX title and authors.
-  If no PDF file is found, the metadata only will be used for analysis. Automatic download of PDF
-  files can be disabled with `--no-pdf-download`.
+- **BibTeX Files (`.bib`)**
+  Processes PDFs linked in `file` fields (relative paths to the BibTeX file are supported). If a PDF is missing, DuckDuckGo attempts to find it online using title/authors; otherwise, analysis proceeds using only the BibTeX metadata. Automatic PDF download can be disabled with `--no-pdf-download`.
 
 ---
 
 ## OUTPUT FILES
 
-(Default names, can be overridden by command-line options)
+Default names (can be overridden via CLI options):
 
-- **analysis_report.json** (or **analysis_report.csv** if CSV format is specified)
-  Structured report containing all results organized by document and query.
+- **`analysis_report.json`**: Main structured report. (Use `.csv` extension for CSV format, e.g., `--report report.csv`).
+- **`log.txt`**: Raw API responses from the LLM.
+- **`processed_files.txt`**: List of processed files/BibTeX keys.
+- **`filtered_out_documents.txt`**: List of documents excluded by `Filter-On` criteria in `query.md`.
+- **`semantic_scholar.bib`**: BibTeX entries for papers found by Semantic Scholar queries.
 
-- **log.txt**
-  Raw API responses for each processed file and query.
+### Report Structure Overview (`analysis_report.json`)
 
-- **processed_files.txt**
-  List of processed files (or BibTeX keys for metadata-only entries) and their associated BibTeX keys.
+The JSON report includes `metadata` (generation time, model used, query details) and a `documents` array. Each document object in the array contains:
 
-### JSON Output Structure
+- `id`: A unique identifier for the document in this report.
+- `file_path`: Path to the PDF file or URL.
+- `bibtex_key`: BibTeX key, if applicable.
+- `is_metadata_only`: Boolean, true if only BibTeX metadata was processed (PDF not found/used).
+- `is_url`: Boolean, true if the input was a URL.
+- `queries`: An array of results, one for each query run on the document. Each query result includes:
+  - `query_id`: Identifier for the query (from `query.md`).
+  - `response`: The LLM's response (parsed JSON if a schema was provided, otherwise text).
+  - `grounding_metadata`: Metadata from Google Search or URL context, if applicable.
 
-The generated JSON report has the following structure:
+Example snippet:
 
 ```json
 {
   "metadata": {
     "generated": "2023-12-07T10:30:00",
-    "total_documents": 3,
-    "model_used": "gemini-2.5-flash-preview-05-20",
-    "queries": [
-      {
-        "id": 1,
-        "text": "Summarize the main contributions...",
-        "parameters": {"temperature": 0.7},
-        "structure": {...}
-      }
-    ]
+    "model_used": "gemini-1.5-flash-latest",
+    "queries": [ { "id": 1, "text": "Summarize..." } ]
   },
   "documents": [
     {
@@ -269,11 +231,12 @@ The generated JSON report has the following structure:
       "file_path": "paper1.pdf",
       "bibtex_key": "smith2023",
       "is_metadata_only": false,
+      "is_url": false,
       "queries": [
         {
           "query_id": 1,
-          "response": {"title": "...", "summary": "..."},
-          "grounding_metadata": {...}
+          "response": {"main_finding": "This paper introduces X."},
+          "grounding_metadata": null
         }
       ]
     }
@@ -281,15 +244,7 @@ The generated JSON report has the following structure:
 }
 ```
 
-### CSV Output Structure
-
-When CSV format is specified (by using a `.csv` file extension), the output will be a spreadsheet-compatible format with:
-
-- Rows representing documents
-- Columns for document metadata (ID, BibTeX Key, File Path, Metadata Only status)
-- Additional columns for each query response
-- JSON responses are serialized as compact JSON strings
-- Text responses have newlines replaced with spaces for CSV compatibility
+For CSV output, document metadata and query responses (JSON serialized if structured, otherwise plain text with newlines removed) are organized into columns.
 
 ---
 
