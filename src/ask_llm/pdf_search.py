@@ -50,9 +50,9 @@ class PDFSearcher:
         if clean_authors:
             # Use first author only to avoid overly long queries
             first_author = clean_authors.split(" and ")[0].split(",")[0].strip()
-            search_query = f'"{clean_title}" {first_author} filetype:pdf'
+            search_query = f"{clean_title} {first_author} filetype:pdf"
         else:
-            search_query = f'"{clean_title}" filetype:pdf'
+            search_query = f"{clean_title} filetype:pdf"
 
         if self.verbose:
             print(f"[DEBUG] Searching for PDF: {search_query}")
