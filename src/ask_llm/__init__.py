@@ -7,6 +7,7 @@ from .config import ConfigManager
 from .bibtex import BibtexProcessor
 from .api import GeminiAPIClient
 from .reports import ReportManager
+from .semantic_scholar import SemanticScholarClient
 
 __all__ = [
     "DocumentAnalyzer",
@@ -14,4 +15,5 @@ __all__ = [
     "BibtexProcessor",
     "GeminiAPIClient",
     "ReportManager",
+    "SemanticScholarClient",
 ]

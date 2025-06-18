@@ -10,6 +10,7 @@ from .config import ConfigManager
 from .bibtex import BibtexProcessor
 from .api import GeminiAPIClient
 from .reports import ReportManager
+from .semantic_scholar import SemanticScholarClient
 
 
 class DocumentAnalyzer:
@@ -19,6 +20,7 @@ class DocumentAnalyzer:
         self.bibtex_processor = BibtexProcessor(verbose=verbose)
         self.api_client = GeminiAPIClient(verbose=verbose)
         self.report_manager = ReportManager(verbose=verbose)
+        self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
 
         # Initialize with default configuration
         self.processed_list = "processed_files.txt"
@@ -76,6 +78,119 @@ class DocumentAnalyzer:
         if self.verbose:
             print("[DEBUG] PDF file not found in any location")
         return None
+
+    def _process_semantic_scholar_queries(self) -> str:
+        """Process all Semantic Scholar queries and return combined BibTeX content"""
+        if self.verbose:
+            print("[DEBUG] Processing all Semantic Scholar queries")
+
+        all_bibtex_entries = []
+        entry_counter = 1
+
+        # Process each Semantic Scholar query
+        semantic_scholar_queries = [
+            q for q in self.queries if q.params.get("semantic_scholar", False)
+        ]
+
+        for query_idx, query_info in enumerate(semantic_scholar_queries):
+            if self.verbose:
+                print(
+                    f"[DEBUG] Processing Semantic Scholar query {query_idx + 1}: {query_info.text[:100]}..."
+                )
+
+            # Extract Semantic Scholar parameters from query params
+            ss_params = {}
+            for key, value in query_info.params.items():
+                if key.startswith("ss_"):
+                    # Remove 'ss_' prefix and convert back to API parameter name
+                    api_key = key[3:].replace("_", "")
+                    if api_key == "publicationdateoryear":
+                        api_key = "publicationDateOrYear"
+                    elif api_key == "fieldsofstudy":
+                        api_key = "fieldsOfStudy"
+                    elif api_key == "publicationtypes":
+                        api_key = "publicationTypes"
+                    elif api_key == "mincitationcount":
+                        api_key = "minCitationCount"
+                    elif api_key == "openaccesspdf":
+                        api_key = "openAccessPdf"
+                    ss_params[api_key] = value
+
+            if self.verbose:
+                print(f"[DEBUG] Semantic Scholar parameters: {ss_params}")
+
+            # Perform the search
+            try:
+                papers = self.semantic_scholar_client.search_papers(
+                    query_info.text, ss_params
+                )
+
+                # Create BibTeX entries for each paper
+                for paper in papers:
+                    entry_key = f"semanticscholar{entry_counter}"
+                    bibtex_entry = self.semantic_scholar_client.create_bibtex_entry(
+                        paper, entry_key
+                    )
+                    all_bibtex_entries.append(bibtex_entry)
+                    entry_counter += 1
+
+                if self.verbose:
+                    print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
+
+            except Exception as e:
+                print(f"Error processing Semantic Scholar query {query_idx + 1}: {e}")
+                if self.verbose:
+                    print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
+                continue
+
+        if all_bibtex_entries:
+            combined_bibtex = "\n\n".join(all_bibtex_entries)
+            if self.verbose:
+                print(
+                    f"[DEBUG] Created combined BibTeX with {len(all_bibtex_entries)} entries"
+                )
+            return combined_bibtex
+        else:
+            if self.verbose:
+                print("[DEBUG] No Semantic Scholar entries generated")
+            return ""
+
+    def _merge_bibtex_files(
+        self, original_bibtex_file: str = None, semantic_scholar_bibtex: str = ""
+    ) -> str:
+        """Merge original BibTeX file with Semantic Scholar results"""
+        merged_content = ""
+
+        # Add original BibTeX content if provided
+        if original_bibtex_file:
+            try:
+                with open(original_bibtex_file, "r", encoding="utf-8") as f:
+                    original_content = f.read().strip()
+                    if original_content:
+                        merged_content += original_content
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Added original BibTeX content from {original_bibtex_file}"
+                            )
+            except FileNotFoundError:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Original BibTeX file {original_bibtex_file} not found"
+                    )
+            except Exception as e:
+                print(
+                    f"Warning: Could not read original BibTeX file {original_bibtex_file}: {e}"
+                )
+
+        # Add Semantic Scholar content
+        if semantic_scholar_bibtex:
+            if merged_content:
+                merged_content += "\n\n"
+            merged_content += semantic_scholar_bibtex
+            if self.verbose:
+                print("[DEBUG] Added Semantic Scholar BibTeX content")
+
+        return merged_content
 
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file or BibTeX metadata with multiple queries"""
@@ -353,6 +468,19 @@ class DocumentAnalyzer:
         if self.verbose:
             print(f"[DEBUG] Starting file processing for {len(files)} files")
 
+        # Check if any queries use Semantic Scholar
+        has_semantic_scholar = any(
+            q.params.get("semantic_scholar", False) for q in self.queries
+        )
+
+        # Process Semantic Scholar queries first if any exist
+        semantic_scholar_bibtex = ""
+        if has_semantic_scholar:
+            if self.verbose:
+                print("[DEBUG] Processing Semantic Scholar queries")
+            semantic_scholar_bibtex = self._process_semantic_scholar_queries()
+
+        # Separate file types
         bibtex_files = [f for f in files if f.endswith(".bib")]
         pdf_files = [f for f in files if f.endswith(".pdf")]
 
@@ -361,20 +489,83 @@ class DocumentAnalyzer:
                 f"[DEBUG] Found {len(bibtex_files)} BibTeX files and {len(pdf_files)} PDF files"
             )
 
-        # Process BibTeX files
-        for bibtex_file in bibtex_files:
-            print(f"Processing BibTeX file: {bibtex_file}")
-            pdf_mappings = self.bibtex_processor.extract_pdfs_from_bibtex(bibtex_file)
+        # Determine how to handle the processing based on file types and Semantic Scholar results
+        if semantic_scholar_bibtex:
+            if bibtex_files:
+                # Case 1: We have both Semantic Scholar results and BibTeX files
+                # Merge with each BibTeX file
+                for bibtex_file in bibtex_files:
+                    print(
+                        f"Processing BibTeX file with Semantic Scholar results: {bibtex_file}"
+                    )
+                    merged_content = self._merge_bibtex_files(
+                        bibtex_file, semantic_scholar_bibtex
+                    )
 
-            for mapping in pdf_mappings:
-                self.process_pdf(
-                    mapping["pdf_path"],
-                    mapping["bibtex_key"],
-                    mapping["entry_text"],
-                    bibtex_file,
+                    # Create a temporary merged file
+                    temp_merged_file = f"merged_{Path(bibtex_file).name}"
+                    with open(temp_merged_file, "w", encoding="utf-8") as f:
+                        f.write(merged_content)
+
+                    # Process the merged file
+                    pdf_mappings = self.bibtex_processor.extract_pdfs_from_bibtex(
+                        temp_merged_file
+                    )
+                    for mapping in pdf_mappings:
+                        self.process_pdf(
+                            mapping["pdf_path"],
+                            mapping["bibtex_key"],
+                            mapping["entry_text"],
+                            temp_merged_file,
+                        )
+
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Created and processed merged file: {temp_merged_file}"
+                        )
+            else:
+                # Case 2: Only Semantic Scholar results (no BibTeX files)
+                print("Processing Semantic Scholar results")
+                merged_content = self._merge_bibtex_files(None, semantic_scholar_bibtex)
+
+                # Create a temporary file for Semantic Scholar results
+                temp_ss_file = "semantic_scholar_results.bib"
+                with open(temp_ss_file, "w", encoding="utf-8") as f:
+                    f.write(merged_content)
+
+                # Process the Semantic Scholar results
+                pdf_mappings = self.bibtex_processor.extract_pdfs_from_bibtex(
+                    temp_ss_file
+                )
+                for mapping in pdf_mappings:
+                    self.process_pdf(
+                        mapping["pdf_path"],
+                        mapping["bibtex_key"],
+                        mapping["entry_text"],
+                        temp_ss_file,
+                    )
+
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Created and processed Semantic Scholar file: {temp_ss_file}"
+                    )
+        else:
+            # Case 3: No Semantic Scholar results, process normally
+            for bibtex_file in bibtex_files:
+                print(f"Processing BibTeX file: {bibtex_file}")
+                pdf_mappings = self.bibtex_processor.extract_pdfs_from_bibtex(
+                    bibtex_file
                 )
 
-        # Process individual PDF files
+                for mapping in pdf_mappings:
+                    self.process_pdf(
+                        mapping["pdf_path"],
+                        mapping["bibtex_key"],
+                        mapping["entry_text"],
+                        bibtex_file,
+                    )
+
+        # Process individual PDF files (these are independent of BibTeX/Semantic Scholar)
         for pdf_file in pdf_files:
             if self.verbose:
                 print(f"[DEBUG] Processing individual PDF: {pdf_file}")
@@ -398,3 +589,19 @@ class DocumentAnalyzer:
 
         if self.filtered_out_documents:
             print("Filtered out documents: filtered_out_documents.txt")
+
+        # Clean up temporary files if they exist
+        temp_files = ["semantic_scholar_results.bib"] + [
+            f"merged_{Path(f).name}" for f in bibtex_files
+        ]
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    if self.verbose:
+                        print(f"[DEBUG] Cleaned up temporary file: {temp_file}")
+                except Exception as e:
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Could not remove temporary file {temp_file}: {e}"
+                        )

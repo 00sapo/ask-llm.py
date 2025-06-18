@@ -136,6 +136,17 @@ class ConfigManager:
                         "temperature:",
                         "google-search:",
                         "filter-on:",
+                        "semantic-scholar:",
+                        "limit:",
+                        "offset:",
+                        "sort:",
+                        "fields:",
+                        "publication-types:",
+                        "open-access-pdf:",
+                        "min-citation-count:",
+                        "publication-date-or-year:",
+                        "venue:",
+                        "fields-of-study:",
                     ]
                 ):
                     key, value = line.split(":", 1)
@@ -164,8 +175,34 @@ class ConfigManager:
                             print(
                                 f"Warning: Invalid google-search value '{value}', should be true/false"
                             )
+                    elif key == "semantic_scholar":
+                        # Parse boolean values
+                        if value.lower() in ["true", "yes", "1", "on"]:
+                            current_params["semantic_scholar"] = True
+                        elif value.lower() in ["false", "no", "0", "off"]:
+                            current_params["semantic_scholar"] = False
+                        else:
+                            print(
+                                f"Warning: Invalid semantic-scholar value '{value}', should be true/false"
+                            )
                     elif key == "filter_on":
                         current_params["filter_on"] = value
+                    # Add semantic scholar search parameters
+                    elif key in [
+                        "limit",
+                        "offset",
+                        "sort",
+                        "fields",
+                        "publication_types",
+                        "open_access_pdf",
+                        "min_citation_count",
+                        "publication_date_or_year",
+                        "venue",
+                        "fields_of_study",
+                    ]:
+                        current_params[f"ss_{key}"] = (
+                            value  # Prefix with 'ss_' for semantic scholar params
+                        )
                 else:
                     query_lines.append(line)
 

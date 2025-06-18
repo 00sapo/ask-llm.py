@@ -119,7 +119,7 @@ ask-llm paper1.pdf paper2.pdf
 ### Analyze PDFs Referenced in a BibTeX File
 
 ```sh
-ask-llm references.bib --
+ask-llm references.bib
 ```
 
 ### Mix PDFs and BibTeX Files
@@ -128,28 +128,36 @@ ask-llm references.bib --
 ask-llm paper1.pdf references.bib paper2.pdf
 ```
 
+### Specify a Custom Query File
+
+```sh
+ask-llm --query-file custom_query.md paper1.pdf
+```
+
+### Use Semantic Scholar for searching papers
+
+```sh
+ask-llm --query-file custom_query.md
+```
+
+or even just
+
+```sh
+ask-llm
+```
+
+This requires proper queries in the input file (see [INPUT FILES](#input-files) section).
+
 ### Use Google Search for Grounding
 
 ```sh
 ask-llm --google-search paper1.pdf
 ```
 
-### Specify a Different Model
-
-```sh
-ask-llm --model gemini-1.5-pro-latest paper1.pdf
-```
-
 ### Generate CSV Output
 
 ```sh
 ask-llm --report results.csv paper1.pdf
-```
-
-### Run in Verbose Mode
-
-```sh
-ask-llm -v paper1.pdf
 ```
 
 ---
@@ -168,6 +176,12 @@ ask-llm -v paper1.pdf
   output structure, you can set a boolean field to be used for filtering the collection of PDFs and
   papers. If the field is `true`, the document will be included in the final report, otherwise it
   will be excluded.
+  - **Semantic Scholar:** `Semantic-Scholar: <true|false>` to enable or disable searching for papers
+  on Semantic Scholar. If enabled, no LLM will be involved and query text will be used to search
+  papers on Semantic Scholar. The retrieved papers will be merged to the provided bibtex or PDF
+  files and used in subsequent queries. You can use any further search option and query logical
+  operators as described in the Semantic Scholar API [docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search).
+  By default, results will be sorted by citation count.
 
   Options are kept for the subsequent queries, so you can specify them only once
   at the beginning, change them for a certain query, and then revert to the previous value

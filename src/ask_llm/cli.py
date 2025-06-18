@@ -24,7 +24,7 @@ def main(
     ctx: typer.Context,
     files: List[Path] = typer.Argument(
         None,
-        help="PDF files and/or BibTeX files to process",
+        help="PDF files and/or BibTeX files to process (optional when using Semantic Scholar)",
     ),
     no_clear: bool = typer.Option(
         False,
@@ -73,26 +73,87 @@ def main(
         help="Enable verbose debug output",
     ),
 ) -> None:
-    """Process PDF files and BibTeX bibliographies using the Gemini API."""
+    """Process PDF files and BibTeX bibliographies using the Gemini API.
 
-    # If no subcommand was invoked and no files provided, show help
+    Files are optional when using Semantic Scholar queries. You can run with just
+    a query file that contains semantic-scholar: true parameters.
+    """
+
+    # If no subcommand was invoked, process files or run semantic scholar queries
     if ctx.invoked_subcommand is None:
-        if not files:
-            console.print("Error: No files provided", style="bold red")
-            raise typer.Exit(1)
+        # Check if we have a query file to determine if Semantic Scholar queries might be present
+        query_file_path = query_file or Path("query.md")
 
-        # Validate that files exist
-        for file in files:
-            if not file.exists():
-                console.print(f"Error: File does not exist: {file}", style="bold red")
+        # If no files provided, check if we have Semantic Scholar queries
+        if not files:
+            if not query_file_path.exists():
+                console.print(
+                    "Error: No files provided and no query file found.\n"
+                    "Either provide input files or create a query.md file with semantic-scholar queries.",
+                    style="bold red",
+                )
+                console.print(
+                    "\nExample query.md for Semantic Scholar:\n"
+                    "semantic-scholar: true\n"
+                    "limit: 10\n\n"
+                    "Find papers about machine learning",
+                    style="dim",
+                )
                 raise typer.Exit(1)
+            else:
+                # Check if the query file contains Semantic Scholar queries
+                try:
+                    with open(query_file_path, "r", encoding="utf-8") as f:
+                        query_content = f.read()
+
+                    if "semantic-scholar:" not in query_content.lower():
+                        console.print(
+                            "Error: No files provided and no Semantic Scholar queries found in query file.\n"
+                            "Either provide input files or add 'semantic-scholar: true' to your queries.",
+                            style="bold red",
+                        )
+                        console.print(
+                            "\nExample query for Semantic Scholar:\n"
+                            "semantic-scholar: true\n"
+                            "limit: 10\n\n"
+                            "Find papers about machine learning",
+                            style="dim",
+                        )
+                        raise typer.Exit(1)
+                    else:
+                        if verbose:
+                            console.print(
+                                "[DEBUG] No input files provided, but Semantic Scholar queries found. Proceeding with Semantic Scholar only.",
+                                style="dim",
+                            )
+                        files = []  # Set files to empty list for processing
+
+                except Exception as e:
+                    console.print(
+                        f"Error reading query file {query_file_path}: {e}",
+                        style="bold red",
+                    )
+                    raise typer.Exit(1)
+        else:
+            # Validate that provided files exist
+            for file in files:
+                if not file.exists():
+                    console.print(
+                        f"Error: File does not exist: {file}", style="bold red"
+                    )
+                    raise typer.Exit(1)
 
         if verbose:
             console.print("[DEBUG] Starting ask-llm with verbose output", style="dim")
-            console.print(f"[DEBUG] Processing {len(files)} files", style="dim")
+            if files:
+                console.print(f"[DEBUG] Processing {len(files)} files", style="dim")
+            else:
+                console.print(
+                    "[DEBUG] Running with Semantic Scholar queries only", style="dim"
+                )
 
-        # Convert Path objects to strings for compatibility
-        file_paths = [str(f) for f in files]
+        # Convert Path objects to strings for compatibility (files might be empty)
+        file_paths = [str(f) for f in files] if files else []
 
         # Patch DocumentAnalyzer with CLI overrides
         class CLIAnalyzer(DocumentAnalyzer):
@@ -200,7 +261,12 @@ def main(
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Processing files...", total=None)
+                if files:
+                    task = progress.add_task("Processing files...", total=None)
+                else:
+                    task = progress.add_task(
+                        "Processing Semantic Scholar queries...", total=None
+                    )
 
                 analyzer = CLIAnalyzer()
                 analyzer.process_files(file_paths)
