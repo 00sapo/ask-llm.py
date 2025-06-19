@@ -22,11 +22,17 @@ class SemanticScholarProcessor:
             q for q in queries if q.params.get("semantic_scholar", False)
         ]
 
+        print(f"🔍 Processing {len(semantic_scholar_queries)} Semantic Scholar queries")
+
         for query_idx, query_info in enumerate(semantic_scholar_queries):
             if self.verbose:
                 print(
                     f"[DEBUG] Processing Semantic Scholar query {query_idx + 1}: {query_info.text[:100]}..."
                 )
+
+            print(
+                f"🔎 Semantic Scholar query {query_idx + 1}: {query_info.text[:100]}..."
+            )
 
             # Extract Semantic Scholar parameters from query params
             ss_params = {}
@@ -55,6 +61,8 @@ class SemanticScholarProcessor:
                     query_info.text, ss_params
                 )
 
+                print(f"📚 Found {len(papers)} papers for query {query_idx + 1}")
+
                 # Create BibTeX entries for each paper
                 for paper in papers:
                     entry_key = f"semanticscholar{entry_counter}"
@@ -68,7 +76,9 @@ class SemanticScholarProcessor:
                     print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
 
             except Exception as e:
-                print(f"Error processing Semantic Scholar query {query_idx + 1}: {e}")
+                print(
+                    f"❌ Error processing Semantic Scholar query {query_idx + 1}: {e}"
+                )
                 if self.verbose:
                     print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
                 continue
@@ -89,11 +99,14 @@ class SemanticScholarProcessor:
                     f"[DEBUG] Saved Semantic Scholar BibTeX to: {semantic_scholar_file}"
                 )
 
-            print(f"Semantic Scholar BibTeX saved to: {semantic_scholar_file}")
+            print(
+                f"💾 Semantic Scholar BibTeX saved: {semantic_scholar_file} ({len(all_bibtex_entries)} entries)"
+            )
             return combined_bibtex
         else:
             if self.verbose:
                 print("[DEBUG] No Semantic Scholar entries generated")
+            print("⚠️  No Semantic Scholar entries generated")
             return ""
 
     def merge_bibtex_files(

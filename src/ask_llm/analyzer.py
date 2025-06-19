@@ -251,7 +251,9 @@ class DocumentAnalyzer:
                 f.write(f"Filter Reason: {doc.get('filter_reason', 'N/A')}\n")
                 f.write("-" * 40 + "\n")
 
-        print(f"Filtered out documents list saved to: {filtered_out_file}")
+        print(
+            f"📋 Filtered out documents saved: {filtered_out_file} ({len(self.filtered_out_documents)} documents)"
+        )
 
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file, URL, or BibTeX metadata with multiple queries"""
@@ -283,8 +285,11 @@ class DocumentAnalyzer:
             self.filtered_out_documents.append(document_data)
             display_path = document_data["file_path"] or f"metadata for {bibtex_key}"
             print(
-                f"Filtered out during processing: {display_path} (at query {document_data['filtered_at_query']})"
+                f"🚫 Filtered out: {display_path} (at query {document_data['filtered_at_query']})"
             )
+            # Report filtered out count
+            filtered_count = len(self.filtered_out_documents)
+            print(f"📊 Documents filtered out: {filtered_count}")
         else:
             # Document passed all filters
             self.report_manager.add_document(document_data)
@@ -311,7 +316,7 @@ class DocumentAnalyzer:
                 )
 
             display_path = document_data["file_path"] or f"metadata for {bibtex_key}"
-            print(f"Successfully processed: {display_path}")
+            print(f"✅ Successfully processed: {display_path}")
 
         return True
 
@@ -494,17 +499,27 @@ class DocumentAnalyzer:
             self.report_manager.save_json_report(self.json_report_file)
             self.report_manager.save_csv_report(self.csv_report_file)
 
-            print("\nProcessing complete!")
-            print(f"Final JSON report saved to: {self.json_report_file}")
-            print(f"Final CSV report saved to: {self.csv_report_file}")
-            print(f"Log saved to: {self.logfile}")
-            print(f"Processed files list: {self.processed_list}")
+            # Print final summary
+            print("\n" + "=" * 50)
+            print("🎉 Processing complete!")
+            print("📊 Final summary:")
+            total_docs = len(self.report_manager.results["documents"])
+            filtered_docs = len(self.filtered_out_documents)
+            print(f"   • Documents processed: {total_docs}")
+            print(f"   • Documents filtered out: {filtered_docs}")
+            print(f"   • Total documents examined: {total_docs + filtered_docs}")
+            print("📁 Output files:")
+            print(f"   • JSON report: {self.json_report_file}")
+            print(f"   • CSV report: {self.csv_report_file}")
+            print(f"   • Log file: {self.logfile}")
+            print(f"   • Processed files list: {self.processed_list}")
 
             if self.filtered_out_documents:
-                print("Filtered out documents: filtered_out_documents.txt")
+                print("   • Filtered out documents: filtered_out_documents.txt")
 
             if has_semantic_scholar:
-                print("Semantic Scholar BibTeX saved to: semantic_scholar.bib")
+                print("   • Semantic Scholar BibTeX: semantic_scholar.bib")
+            print("=" * 50)
 
             # Clean up temporary files if they exist
             temp_files = ["semantic_scholar_results.bib"] + [

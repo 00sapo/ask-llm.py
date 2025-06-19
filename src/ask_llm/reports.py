@@ -55,8 +55,24 @@ class ReportManager:
             title, authors
         )
 
+        # Generate and display Google Scholar link
+        if document_data["google_scholar_link"]:
+            search_query = title
+            if authors:
+                # Extract first author's last name
+                author_parts = authors.strip().split()
+                if author_parts and len(author_parts) >= 2:
+                    first_author_last = author_parts[-1]
+                    search_query += f" {first_author_last}"
+            print(f"🔗 Google Scholar link: {document_data['google_scholar_link']}")
+            print(f"🔍 Search query: {search_query}")
+
         self.results["documents"].append(document_data)
         self.results["metadata"]["total_documents"] += 1
+
+        # Report current document count
+        doc_count = len(self.results["documents"])
+        print(f"📊 Documents processed: {doc_count}")
 
     def generate_google_scholar_link(self, title, authors=None):
         """Generate a Google Scholar search link for a paper"""
@@ -97,6 +113,9 @@ class ReportManager:
 
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(self.results, f, indent=2, ensure_ascii=False)
+
+        doc_count = len(self.results["documents"])
+        print(f"💾 JSON report saved: {filename} ({doc_count} documents)")
 
         if self.verbose:
             print(
@@ -257,6 +276,9 @@ class ReportManager:
                     row.append(response_str)
 
                 writer.writerow(row)
+
+        doc_count = len(self.results["documents"])
+        print(f"💾 CSV report saved: {filename} ({doc_count} documents)")
 
         if self.verbose:
             print(

@@ -51,6 +51,7 @@ class DocumentProcessor:
         if os.path.isfile(pdf_path):
             if self.verbose:
                 print(f"[DEBUG] Found PDF at original path: {pdf_path}")
+            print(f"📄 PDF found: {pdf_path}")
             return pdf_path
 
         # If we have a BibTeX directory, try relative to that first
@@ -61,10 +62,12 @@ class DocumentProcessor:
                     print(
                         f"[DEBUG] Found PDF relative to BibTeX directory: {bibtex_relative_path}"
                     )
+                print(f"📄 PDF found: {bibtex_relative_path}")
                 return bibtex_relative_path
 
         if self.verbose:
             print("[DEBUG] PDF file not found in any location")
+        print(f"❌ PDF not found: {pdf_path}")
         return None
 
     def _search_for_pdf(self, metadata, query_text="", response_data=None):
@@ -75,6 +78,10 @@ class DocumentProcessor:
         if self.verbose:
             strategy_name = "Qwant" if self.use_qwant_strategy else "Google grounding"
             print(f"[DEBUG] Searching for PDF using {strategy_name} strategy")
+
+        title = metadata.get("title", "")
+        if title:
+            print(f"🔍 Searching for PDF: {title}")
 
         try:
             # Use strategy to discover URLs
@@ -89,14 +96,17 @@ class DocumentProcessor:
                     print(f"[DEBUG] Downloaded PDF to: {result}")
                     # Track downloaded file for cleanup
                     self.downloaded_pdfs.append(result)
+                print(f"✅ PDF downloaded: {result}")
                 return result
             else:
                 if self.verbose:
                     print("[DEBUG] PDF search did not find any results")
+                print("❌ PDF search failed: No results found")
                 return None
         except Exception as e:
             if self.verbose:
                 print(f"[DEBUG] PDF search failed with error: {e}")
+            print(f"❌ PDF search failed: {e}")
             return None
 
     def _evaluate_filter(self, response, filter_field, document_data, query_id):
@@ -216,6 +226,7 @@ class DocumentProcessor:
                         pdf_source = "metadata_only"
                         if self.verbose:
                             print(f"[DEBUG] Falling back to metadata for {bibtex_key}")
+                        print(f"📚 Using metadata only: {bibtex_key}")
                 else:
                     # No PDF found, use metadata only
                     pdf_source = "metadata_only"
@@ -223,6 +234,7 @@ class DocumentProcessor:
                         print(
                             f"[DEBUG] Using metadata for {bibtex_key} (PDF not found)"
                         )
+                    print(f"📚 Using metadata only: {bibtex_key}")
             else:
                 print(f"File not found: {pdf_path}", file=sys.stderr)
                 return None, False
