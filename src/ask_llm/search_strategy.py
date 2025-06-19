@@ -63,7 +63,7 @@ class GoogleGroundingStrategy(SearchStrategy):
 
             temp_query_config = QueryConfig(
                 text=search_query,
-                params={"google_search": True, "model": "gemini-2.0-flash"},
+                params={"google_search": True, "model": "gemini-2.5-flash"},
             )
 
             response_data = self.api_client.make_request(payload, temp_query_config)
