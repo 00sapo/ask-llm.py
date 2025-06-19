@@ -20,6 +20,13 @@ class SearchStrategy(ABC):
         """Discover PDF URLs for a document. Returns list of discovered URLs."""
         pass
 
+    @abstractmethod
+    def discover_urls_with_source(
+        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
+    ) -> Optional[tuple]:
+        """Discover PDF URLs for a document. Returns tuple of (downloaded_path, original_url) or None."""
+        pass
+
 
 class GoogleGroundingStrategy(SearchStrategy):
     """Strategy that uses Google grounding to discover PDFs"""
@@ -214,6 +221,16 @@ class GoogleGroundingStrategy(SearchStrategy):
 
         return urls
 
+    def discover_urls_with_source(
+        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
+    ) -> Optional[tuple]:
+        """Make an LLM query to search for PDF URLs using Google grounding, returning path and source URL"""
+        urls = self.discover_urls(metadata, query_text, response_data)
+        if urls:
+            # Return the first downloaded path and None for original URL (since discover_urls returns local paths)
+            return urls[0], None
+        return None
+
 
 class QwantSearchStrategy(SearchStrategy):
     """Strategy that uses Qwant search to discover PDFs"""
@@ -257,6 +274,34 @@ class QwantSearchStrategy(SearchStrategy):
                 print(f"[DEBUG] Qwant search failed: {e}")
 
         return urls
+
+    def discover_urls_with_source(
+        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
+    ) -> Optional[tuple]:
+        """Use Qwant search to discover and download PDFs, returning path and source URL"""
+        title = metadata.get("title", "")
+        authors = metadata.get("author", "")
+
+        if not title:
+            if self.verbose:
+                print("[DEBUG] No title available for Qwant search")
+            return None
+
+        try:
+            downloaded_path, original_url = self._search_and_download_pdf_with_source(
+                title, authors
+            )
+            if downloaded_path:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Qwant search found and downloaded: {downloaded_path} from URL: {original_url}"
+                    )
+                return downloaded_path, original_url
+            return None
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] Qwant search failed: {e}")
+            return None
 
     def _search_and_download_pdf(self, title: str, authors: str = "") -> Optional[str]:
         """Search for PDF using Qwant and download it"""
@@ -345,6 +390,103 @@ class QwantSearchStrategy(SearchStrategy):
             if self.verbose:
                 print(f"[DEBUG] PDF search failed: {e}")
             return None
+
+    def _search_and_download_pdf_with_source(
+        self, title: str, authors: str = ""
+    ) -> tuple:
+        """Search for PDF using Qwant and download it, returning both path and original URL"""
+        if not title.strip():
+            if self.verbose:
+                print("[DEBUG] No title provided for PDF search")
+            return None, None
+
+        # Use the same rate limiting and search logic as _search_and_download_pdf
+        import time
+        import random
+
+        current_time = time.time()
+        time_since_last = current_time - self.last_search_time
+        min_wait = 3.0
+        max_wait = 7.0
+
+        if time_since_last < min_wait:
+            wait_time = (
+                min_wait - time_since_last + random.uniform(0, max_wait - min_wait)
+            )
+            if self.verbose:
+                print(
+                    f"[DEBUG] Rate limiting: waiting {wait_time:.1f} seconds before search"
+                )
+            time.sleep(wait_time)
+
+        self.last_search_time = time.time()
+
+        # Clean title and authors for search
+        clean_title = self._clean_search_term(title)
+        clean_authors = self._clean_search_term(authors) if authors else ""
+
+        # Create search query with quotes (strict search)
+        if clean_authors:
+            first_author = clean_authors.split(" and ")[0].split(",")[0].strip()
+            search_query = f'"{clean_title}" {first_author} filetype:pdf'
+        else:
+            search_query = f'"{clean_title}" filetype:pdf'
+
+        if self.verbose:
+            print(f"[DEBUG] Searching for PDF with strict query: {search_query}")
+
+        try:
+            pdf_url = self._search_qwant(search_query)
+            if pdf_url:
+                if self.verbose:
+                    print(f"[DEBUG] Found PDF URL with strict search: {pdf_url}")
+
+                # Download PDF and return both local path and original URL
+                downloaded_path = self.pdf_downloader.download_pdf(pdf_url, title)
+                if downloaded_path:
+                    return downloaded_path, pdf_url
+                return None, None
+            else:
+                if self.verbose:
+                    print(
+                        "[DEBUG] No PDF found with strict search, trying relaxed query"
+                    )
+
+                # Try relaxed search without quotes
+                relaxed_search_query = f"{clean_title} {first_author if clean_authors else ''} filetype:pdf".strip()
+
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Searching for PDF with relaxed query: {relaxed_search_query}"
+                    )
+
+                # Add another rate limit pause for the second search
+                time.sleep(random.uniform(3, 7))
+                self.last_search_time = time.time()
+
+                relaxed_pdf_url = self._search_qwant(relaxed_search_query)
+                if relaxed_pdf_url:
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Found PDF URL with relaxed search: {relaxed_pdf_url}"
+                        )
+
+                    # Download PDF and return both local path and original URL
+                    downloaded_path = self.pdf_downloader.download_pdf(
+                        relaxed_pdf_url, title
+                    )
+                    if downloaded_path:
+                        return downloaded_path, relaxed_pdf_url
+                    return None, None
+                else:
+                    if self.verbose:
+                        print("[DEBUG] No PDF found in relaxed search results")
+                    return None, None
+
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] PDF search failed: {e}")
+            return None, None
 
     def _clean_search_term(self, text: str) -> str:
         """Clean text for search query"""
