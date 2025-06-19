@@ -94,7 +94,7 @@ class GoogleGroundingStrategy(SearchStrategy):
             if source_urls:
                 # Resolve redirects and extract PDF URLs
                 pdf_urls = self.url_resolver.resolve_and_extract_pdfs(source_urls)
-                urls.extend(pdf_urls)
+                urls.extend(pdf_urls[0])
 
         except Exception as e:
             if self.verbose:

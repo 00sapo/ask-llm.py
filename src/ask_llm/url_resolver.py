@@ -44,6 +44,9 @@ class URLResolver:
                     if self.verbose:
                         print(f"[DEBUG] No redirect for {url}")
 
+                if url.lower().endswith(".pdf"):
+                    return resolved_mapping  # If we find a PDF URL, return immediately
+
             except Exception as e:
                 if self.verbose:
                     print(f"[DEBUG] Failed to resolve {url}: {e}")

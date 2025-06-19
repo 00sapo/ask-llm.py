@@ -111,6 +111,9 @@ class BibtexProcessor:
         if not text:
             return text
 
+        # Remove list artifacts (brackets and quotes from bibtexparser)
+        text = text.replace("[", "").replace("]", "").replace("'", "")
+
         # Remove common LaTeX commands
         text = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", text)  # \emph{text} -> text
         text = re.sub(r"[{}]", "", text)  # Remove remaining braces
@@ -120,7 +123,10 @@ class BibtexProcessor:
         text = text.replace("--", "–")  # em dash
         text = text.replace("---", "—")  # en dash
 
-        return text.strip()
+        # Clean up extra whitespace
+        text = re.sub(r"\s+", " ", text).strip()
+
+        return text
 
     def format_metadata_for_prompt(self, metadata: Dict[str, Any]) -> str:
         """Format metadata for inclusion in prompt"""
