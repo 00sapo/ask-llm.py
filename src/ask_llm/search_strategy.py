@@ -43,11 +43,11 @@ class GoogleGroundingStrategy(SearchStrategy):
             return query_text, True  # Just enable Google search
 
         # Create search suggestion
-        search_suggestion = f'title:"{title}"'
+        search_suggestion = f'intitle:"{title}"'
         if authors:
             # Use first author
             first_author = authors.split(" and ")[0].split(",")[0].strip()
-            search_suggestion += f' author:"{first_author}"'
+            search_suggestion += f" {first_author}"
         search_suggestion += " filetype:pdf"
 
         # Add suggestion to query
