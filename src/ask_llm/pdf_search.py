@@ -8,7 +8,6 @@ import random
 from typing import Optional
 
 import requests_cache
-from duckduckgo_search import DDGS
 
 
 class PDFSearcher:
@@ -39,7 +38,7 @@ class PDFSearcher:
                 print(f"[DEBUG] PDF searcher mode: {mode}")
 
     def search_pdf(self, title: str, authors: str = "") -> Optional[str]:
-        """Search for PDF using DuckDuckGo and return either URL or downloaded file path"""
+        """Search for PDF using Qwant and return either URL or downloaded file path"""
         if not self.enabled:
             if self.verbose:
                 print("[DEBUG] PDF search disabled, skipping")
@@ -84,7 +83,7 @@ class PDFSearcher:
             print(f"[DEBUG] Searching for PDF: {search_query}")
 
         try:
-            pdf_url = self._search_duckduckgo(search_query)
+            pdf_url = self._search_qwant(search_query)
             if pdf_url:
                 if self.verbose:
                     print(f"[DEBUG] Found PDF URL: {pdf_url}")
@@ -123,80 +122,123 @@ class PDFSearcher:
 
         return text
 
-    def _search_duckduckgo(self, query: str) -> Optional[str]:
-        """Search DuckDuckGo for PDF files using the duckduckgo_search library"""
+    def _search_qwant(self, query: str) -> Optional[str]:
+        """Search Qwant for PDF files using the API"""
         if self.verbose:
-            print(f"[DEBUG] Searching DuckDuckGo with query: {query}")
+            print(f"[DEBUG] Searching Qwant with query: {query}")
 
         try:
-            # Create new DDGS instance for each request to avoid rate limiting
-            ddgs = DDGS()
-
-            # Perform the actual search
-            results = ddgs.text(
-                keywords=query, region="wt-wt", safesearch="off", max_results=1
-            )
+            # Random device selection instead of dummy searches
+            devices = ["desktop", "mobile", "tablet"]
+            device = random.choice(devices)
 
             if self.verbose:
-                print(f"[DEBUG] Found {len(results)} search results")
+                print(f"[DEBUG] Using device: {device}")
 
-            pdf_url = None
-            # Look for PDF URLs in the results
-            for result in results:
-                href = result.get("href", "")
-                if href.lower().endswith(".pdf"):
-                    if self.verbose:
-                        print(f"[DEBUG] Found direct PDF link: {href}")
-                    pdf_url = href
-                    break
+            # Qwant API parameters
+            params = {
+                "q": query,
+                "count": 10,  # Must be 10 for Qwant
+                "locale": "en_gb",
+                "offset": 0,
+                "device": device,
+                "tgp": 2,
+                "safesearch": 1,
+                "displayed": False,
+                "llm": False,
+            }
 
-                # Also check the title and body for PDF mentions
-                title = result.get("title", "").lower()
-                body = result.get("body", "").lower()
-                if "pdf" in title or "pdf" in body:
-                    # Try to extract PDF URL from the page
-                    page_pdf_url = self._extract_pdf_from_page(href)
-                    if page_pdf_url:
-                        pdf_url = page_pdf_url
-                        break
+            url = "https://api.qwant.com/v3/search/web"
 
-            # Perform a dummy query using one of the other methods to help avoid rate limiting
-            try:
-                dummy_search_methods = ["news", "images"]  # , "videos"]
-                dummy_method = random.choice(dummy_search_methods)
-                dummy_query = random.choice(
-                    ["science", "technology", "research", "academic"]
-                )
+            # Headers similar to the curl example
+            headers = {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US;q=0.7,en;q=0.3",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Referer": "https://www.qwant.com/",
+                "Origin": "https://www.qwant.com",
+                "DNT": "1",
+                "Sec-GPC": "1",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site",
+                "Priority": "u=4",
+                "TE": "trailers",
+            }
 
+            if self.verbose:
+                print(f"[DEBUG] Making request to: {url}")
+                print(f"[DEBUG] Parameters: {params}")
+
+            response = self.session.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if self.verbose:
+                print(f"[DEBUG] Response status: {data.get('status', 'unknown')}")
+
+            # Check if request was successful
+            if data.get("status") != "success":
                 if self.verbose:
                     print(
-                        f"[DEBUG] Performing dummy {dummy_method} search to avoid rate limiting"
+                        f"[DEBUG] Qwant API returned non-success status: {data.get('status')}"
                     )
-
-                if dummy_method == "news":
-                    list(ddgs.news(keywords=dummy_query, max_results=1))
-                elif dummy_method == "images":
-                    list(ddgs.images(keywords=dummy_query, max_results=1))
-                elif dummy_method == "videos":
-                    list(ddgs.videos(keywords=dummy_query, max_results=1))
-
-                if self.verbose:
-                    print(f"[DEBUG] Completed dummy {dummy_method} search")
-
-            except Exception as dummy_e:
-                if self.verbose:
-                    print(f"[DEBUG] Dummy search failed (non-critical): {dummy_e}")
-
-            if pdf_url:
-                return pdf_url
-            else:
-                if self.verbose:
-                    print("[DEBUG] No PDF URLs found in search results")
                 return None
+
+            # Extract results from the response structure
+            result_data = data.get("data", {}).get("result", {})
+            items_data = result_data.get("items", {})
+            mainline = items_data.get("mainline", [])
+
+            if not mainline:
+                if self.verbose:
+                    print("[DEBUG] No mainline results found")
+                return None
+
+            # Get the web results (first mainline item with type 'web')
+            web_results = None
+            for item in mainline:
+                if item.get("type") == "web":
+                    web_results = item.get("items", [])
+                    break
+
+            if not web_results:
+                if self.verbose:
+                    print("[DEBUG] No web results found in mainline")
+                return None
+
+            if self.verbose:
+                print(f"[DEBUG] Found {len(web_results)} search results")
+
+            # Look for PDF URLs in the results
+            for result in web_results:
+                url_result = result.get("url", "")
+                if url_result.lower().endswith(".pdf"):
+                    if self.verbose:
+                        print(f"[DEBUG] Found direct PDF link: {url_result}")
+                    return url_result
+
+            # If no direct PDF links, try to extract from pages
+            for result in web_results:
+                url_result = result.get("url", "")
+                title = result.get("title", "").lower()
+                desc = result.get("desc", "").lower()
+
+                if "pdf" in title or "pdf" in desc:
+                    # Try to extract PDF URL from the page
+                    page_pdf_url = self._extract_pdf_from_page(url_result)
+                    if page_pdf_url:
+                        return page_pdf_url
+
+            if self.verbose:
+                print("[DEBUG] No PDF URLs found in search results")
+            return None
 
         except Exception as e:
             if self.verbose:
-                print(f"[DEBUG] DuckDuckGo search error: {e}")
+                print(f"[DEBUG] Qwant search error: {e}")
             return None
 
     def _extract_pdf_from_page(self, page_url: str) -> Optional[str]:
