@@ -10,7 +10,7 @@ from .bibtex import BibtexProcessor
 from .api import GeminiAPIClient
 from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
-from .pdf_search import PDFSearcher
+from .pdf_search import PDFDownloader
 from .document_processor import DocumentProcessor
 from .semantic_scholar_processor import SemanticScholarProcessor
 
@@ -33,13 +33,13 @@ class DocumentAnalyzer:
 
         # Initialize specialized components
         self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
-        self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=True)
+        self.pdf_downloader = PDFDownloader(verbose=verbose)
 
         # Initialize processors with strategy choice
         self.document_processor = DocumentProcessor(
             self.api_client,
             self.bibtex_processor,
-            self.pdf_searcher,
+            self.pdf_downloader,
             verbose=verbose,
             use_qwant_strategy=use_qwant_strategy,
         )

@@ -11,6 +11,7 @@ from .semantic_scholar import SemanticScholarClient
 from .document_processor import DocumentProcessor
 from .semantic_scholar_processor import SemanticScholarProcessor
 from .url_resolver import URLResolver
+from .pdf_search import PDFDownloader
 from .search_strategy import (
     SearchStrategy,
     GoogleGroundingStrategy,
@@ -27,6 +28,7 @@ __all__ = [
     "DocumentProcessor",
     "SemanticScholarProcessor",
     "URLResolver",
+    "PDFDownloader",
     "SearchStrategy",
     "GoogleGroundingStrategy",
     "QwantSearchStrategy",

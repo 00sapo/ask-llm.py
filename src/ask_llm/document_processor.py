@@ -7,7 +7,7 @@ import os
 
 from .api import GeminiAPIClient
 from .bibtex import BibtexProcessor
-from .pdf_search import PDFSearcher
+from .pdf_search import PDFDownloader
 from .search_strategy import GoogleGroundingStrategy, QwantSearchStrategy
 from .url_resolver import URLResolver
 
@@ -17,13 +17,13 @@ class DocumentProcessor:
         self,
         api_client: GeminiAPIClient,
         bibtex_processor: BibtexProcessor,
-        pdf_searcher: PDFSearcher,
+        pdf_downloader: PDFDownloader,
         verbose=False,
         use_qwant_strategy=False,
     ):
         self.api_client = api_client
         self.bibtex_processor = bibtex_processor
-        self.pdf_searcher = pdf_searcher
+        self.pdf_downloader = pdf_downloader
         self.verbose = verbose
         self.use_qwant_strategy = use_qwant_strategy
         self.downloaded_pdfs = []  # Track downloaded PDF files for cleanup
@@ -31,14 +31,14 @@ class DocumentProcessor:
         # Initialize search strategy
         if use_qwant_strategy:
             self.search_strategy = QwantSearchStrategy(
-                self.pdf_searcher, verbose=verbose
+                self.pdf_downloader, verbose=verbose
             )
             if self.verbose:
                 print("[DEBUG] Using Qwant search strategy")
         else:
             url_resolver = URLResolver(verbose=verbose)
             self.search_strategy = GoogleGroundingStrategy(
-                self.api_client, url_resolver, verbose=verbose
+                self.api_client, url_resolver, self.pdf_downloader, verbose=verbose
             )
             if self.verbose:
                 print("[DEBUG] Using Google grounding search strategy")
@@ -392,5 +392,5 @@ class DocumentProcessor:
                 print(
                     f"[DEBUG] Cleaning up {len(self.downloaded_pdfs)} downloaded PDF files"
                 )
-            self.pdf_searcher.cleanup_temp_files(self.downloaded_pdfs)
+            self.pdf_downloader.cleanup_temp_files(self.downloaded_pdfs)
             self.downloaded_pdfs.clear()
