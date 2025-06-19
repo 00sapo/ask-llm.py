@@ -2,6 +2,8 @@
 
 import os
 from pathlib import Path
+from datetime import datetime
+from typing import List
 
 from .config import ConfigManager
 from .bibtex import BibtexProcessor
@@ -14,29 +16,32 @@ from .semantic_scholar_processor import SemanticScholarProcessor
 
 
 class DocumentAnalyzer:
-    def __init__(self, verbose=False, auto_download_pdfs=True):
+    def __init__(
+        self,
+        verbose=False,
+        use_qwant_strategy=False,
+        **config_overrides,
+    ):
         self.verbose = verbose
-        self.auto_download_pdfs = auto_download_pdfs
+        self.use_qwant_strategy = use_qwant_strategy
 
-        # Initialize core components
-        self.config = ConfigManager(verbose=verbose)
-        self.bibtex_processor = BibtexProcessor(
-            verbose=verbose, auto_download_pdfs=auto_download_pdfs
-        )
+        # Initialize core components with config overrides
+        self.config = ConfigManager(verbose=verbose, **config_overrides)
+        self.bibtex_processor = BibtexProcessor(verbose=verbose)
         self.api_client = GeminiAPIClient(verbose=verbose)
         self.report_manager = ReportManager(verbose=verbose)
 
         # Initialize specialized components
-        self.semantic_scholar_client = SemanticScholarClient(
-            verbose=verbose, auto_download_pdfs=auto_download_pdfs
-        )
-        self.pdf_searcher = PDFSearcher(
-            verbose=verbose, enabled=True, download_pdfs=auto_download_pdfs
-        )
+        self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
+        self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=True)
 
-        # Initialize processors
+        # Initialize processors with strategy choice
         self.document_processor = DocumentProcessor(
-            self.api_client, self.bibtex_processor, self.pdf_searcher, verbose=verbose
+            self.api_client,
+            self.bibtex_processor,
+            self.pdf_searcher,
+            verbose=verbose,
+            use_qwant_strategy=use_qwant_strategy,
         )
         self.semantic_scholar_processor = SemanticScholarProcessor(
             self.semantic_scholar_client, verbose=verbose
@@ -51,13 +56,13 @@ class DocumentAnalyzer:
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
-            if auto_download_pdfs:
-                print("[DEBUG] PDF download mode enabled")
-            else:
-                print("[DEBUG] Using URL context instead of PDF downloads")
+            print("[DEBUG] PDF download mode enabled")
 
-        # Load configuration
-        self.queries = self.config.load_queries("query.md")
+            strategy_name = "Qwant" if use_qwant_strategy else "Google grounding"
+            print(f"[DEBUG] Using {strategy_name} search strategy")
+
+        # Load configuration - now uses correct query file path
+        self.queries = self.config.load_queries()
 
         if self.verbose:
             print(f"[DEBUG] Loaded {len(self.queries)} queries")
@@ -79,16 +84,137 @@ class DocumentAnalyzer:
             self.queries, self.api_client.default_model
         )
 
+    def save_state(self, state_file: str = "ask_llm_state.json"):
+        """Save complete process state"""
+        state_data = {
+            "version": "1.0.0",
+            "timestamp": datetime.now().isoformat(),
+            "config": {
+                "query_file": self.config.settings.query_file,
+                "use_qwant_strategy": self.use_qwant_strategy,
+                "processed_list": self.processed_list,
+                "logfile": self.logfile,
+                "json_report_file": self.json_report_file,
+                "csv_report_file": self.csv_report_file,
+            },
+            "queries": [
+                {
+                    "text": q.text,
+                    "params": q.params,
+                    "structure": q.structure,
+                    "filter_on": q.filter_on,
+                }
+                for q in self.queries
+            ],
+            "report_data": self.report_manager.results,
+            "filtered_out_documents": self.filtered_out_documents,
+            "processed_files": self._get_processed_files(),
+        }
+
+        self.config.save_state(state_data, state_file)
+        if self.verbose:
+            print(
+                f"[DEBUG] Saved complete state with {len(self.report_manager.results['documents'])} documents"
+            )
+
+    def load_state(self, state_file: str = "ask_llm_state.json") -> bool:
+        """Load and restore complete process state"""
+        state_data = self.config.load_state(state_file)
+        if not state_data:
+            return False
+
+        try:
+            # Restore configuration
+            config = state_data.get("config", {})
+            self.processed_list = config.get("processed_list", self.processed_list)
+            self.logfile = config.get("logfile", self.logfile)
+            self.json_report_file = config.get(
+                "json_report_file", self.json_report_file
+            )
+            self.csv_report_file = config.get("csv_report_file", self.csv_report_file)
+
+            # Restore strategy setting if available
+            if "use_qwant_strategy" in config:
+                self.use_qwant_strategy = config["use_qwant_strategy"]
+                if self.verbose:
+                    strategy_name = (
+                        "Qwant" if self.use_qwant_strategy else "Google grounding"
+                    )
+                    print(f"[DEBUG] Restored search strategy: {strategy_name}")
+
+            # Restore report data
+            if "report_data" in state_data:
+                self.report_manager.results = state_data["report_data"]
+
+            # Restore filtered documents
+            if "filtered_out_documents" in state_data:
+                self.filtered_out_documents = state_data["filtered_out_documents"]
+
+            # Restore processed files list
+            if "processed_files" in state_data:
+                self._restore_processed_files(state_data["processed_files"])
+
+            if self.verbose:
+                doc_count = len(self.report_manager.results.get("documents", []))
+                filtered_count = len(self.filtered_out_documents)
+                print(
+                    f"[DEBUG] Restored state with {doc_count} documents and {filtered_count} filtered documents"
+                )
+
+            return True
+
+        except Exception as e:
+            print(f"Error restoring state: {e}")
+            return False
+
+    def _get_processed_files(self) -> List[str]:
+        """Get list of processed files"""
+        try:
+            if os.path.exists(self.processed_list):
+                with open(self.processed_list, "r", encoding="utf-8") as f:
+                    return f.read().splitlines()
+        except Exception:
+            pass
+        return []
+
+    def _restore_processed_files(self, processed_files: List[str]):
+        """Restore processed files list"""
+        try:
+            with open(self.processed_list, "w", encoding="utf-8") as f:
+                f.write("\n".join(processed_files))
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] Could not restore processed files list: {e}")
+
+    def _should_skip_processed_file(self, pdf_path: str, bibtex_key: str) -> bool:
+        """Check if file was already processed based on state"""
+        processed_files = self._get_processed_files()
+
+        # Check various formats that might be in processed list
+        search_patterns = [
+            f"{pdf_path}|{bibtex_key}",
+            f"URL:{pdf_path}|{bibtex_key}",
+            f"METADATA:{bibtex_key}|{bibtex_key}",
+            pdf_path,  # Just the path
+        ]
+
+        for pattern in search_patterns:
+            if pattern in processed_files:
+                if self.verbose:
+                    print(f"[DEBUG] Skipping already processed: {pattern}")
+                return True
+
+        return False
+
     def _track_discovered_url(self, bibtex_key: str, discovered_urls: dict):
         """Track discovered URLs for later BibTeX update"""
         # Check if we discovered a URL for this document
         for doc in self.report_manager.results["documents"]:
             if doc["bibtex_key"] == bibtex_key and doc.get("pdf_source") in [
-                "searched_url",
                 "searched_download",
             ]:
                 # Find the URL from the document processing
-                if doc.get("is_url") and doc.get("file_path"):
+                if doc.get("file_path"):
                     discovered_urls[bibtex_key] = doc["file_path"]
                     if self.verbose:
                         print(
@@ -120,7 +246,6 @@ class DocumentAnalyzer:
                 f.write(
                     f"Metadata Only: {'Yes' if doc['is_metadata_only'] else 'No'}\n"
                 )
-                f.write(f"URL: {'Yes' if doc.get('is_url', False) else 'No'}\n")
                 f.write(f"PDF Source: {doc.get('pdf_source', 'unknown')}\n")
                 f.write(f"Filtered at Query: {doc.get('filtered_at_query', 'N/A')}\n")
                 f.write(f"Filter Reason: {doc.get('filter_reason', 'N/A')}\n")
@@ -130,6 +255,13 @@ class DocumentAnalyzer:
 
     def process_pdf(self, pdf_path, bibtex_key="", entry_text="", bibtex_file_path=""):
         """Process a single PDF file, URL, or BibTeX metadata with multiple queries"""
+
+        # Check if already processed when resuming
+        if self._should_skip_processed_file(pdf_path, bibtex_key):
+            if self.verbose:
+                print(f"[DEBUG] Skipping already processed: {pdf_path or bibtex_key}")
+            return True
+
         document_id = len(self.report_manager.results["documents"]) + 1
 
         document_data, success = self.document_processor.process_document(
@@ -164,9 +296,7 @@ class DocumentAnalyzer:
 
             # Record processed file
             with open(self.processed_list, "a", encoding="utf-8") as f:
-                if document_data.get("is_url"):
-                    f.write(f"URL:{document_data['file_path']}|{bibtex_key}\n")
-                elif document_data["is_metadata_only"]:
+                if document_data["is_metadata_only"]:
                     f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
                 else:
                     f.write(f"{document_data['file_path']}|{bibtex_key}\n")

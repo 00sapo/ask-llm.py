@@ -31,10 +31,20 @@ def main(
         "--no-clear",
         help="Do not clear output files before processing (append mode)",
     ),
-    no_pdf_download: bool = typer.Option(
+    qwant: bool = typer.Option(
         False,
-        "--no-pdf-download",
-        help="Disable automatic PDF downloading for missing files and use context url instead",
+        "--qwant",
+        help="Use Qwant search strategy instead of Google grounding (default)",
+    ),
+    load_state: Optional[Path] = typer.Option(
+        None,
+        "--load-state",
+        help="Load and resume from saved state file",
+    ),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        help="Resume from default state file (ask_llm_state.json)",
     ),
     query_file: Optional[Path] = typer.Option(
         None,
@@ -82,6 +92,8 @@ def main(
 
     Files are optional when using Semantic Scholar queries. You can run with just
     a query file that contains semantic-scholar: true parameters.
+
+    State is automatically saved to ask_llm_state.json for recovery purposes.
     """
 
     # If no subcommand was invoked, process files or run semantic scholar queries
@@ -156,63 +168,85 @@ def main(
                 console.print(
                     "[DEBUG] Running with Semantic Scholar queries only", style="dim"
                 )
-            if no_pdf_download:
-                console.print("[DEBUG] PDF download disabled", style="dim")
+            console.print("[DEBUG] PDF download always enabled", style="dim")
+            console.print(
+                "[DEBUG] State saving enabled (ask_llm_state.json)", style="dim"
+            )
+            if qwant:
+                console.print("[DEBUG] Using Qwant search strategy", style="dim")
+            else:
+                console.print(
+                    "[DEBUG] Using Google grounding search strategy", style="dim"
+                )
 
         # Convert Path objects to strings for compatibility (files might be empty)
         file_paths = [str(f) for f in files] if files else []
 
-        # Patch DocumentAnalyzer with CLI overrides
+        # Create simplified CLIAnalyzer
         class CLIAnalyzer(DocumentAnalyzer):
             def __init__(self):
-                # Pass no_pdf_download option to parent constructor
-                auto_download_pdfs = not no_pdf_download
-                super().__init__(verbose=verbose, auto_download_pdfs=auto_download_pdfs)
-
-                # Override config settings with CLI options
+                # Prepare config overrides
+                config_overrides = {}
+                if query_file:
+                    config_overrides["query_file"] = str(query_file)
                 if api_key:
-                    self.config.settings.api_key = api_key
-                    if verbose:
-                        console.print("[DEBUG] API key overridden via CLI", style="dim")
-
+                    config_overrides["api_key"] = api_key
                 if api_key_command:
-                    self.config.settings.api_key_command = api_key_command
-                    if verbose:
+                    config_overrides["api_key_command"] = api_key_command
+                if base_url:
+                    config_overrides["base_url"] = base_url
+
+                # Initialize with qwant flag (PDF download is always enabled now)
+                super().__init__(
+                    verbose=verbose,
+                    use_qwant_strategy=qwant,
+                    **config_overrides,
+                )
+
+                # Handle state loading
+                state_loaded = False
+                if load_state:
+                    state_loaded = self.load_state(str(load_state))
+                    if state_loaded:
+                        if verbose:
+                            console.print(
+                                f"[DEBUG] Loaded state from: {load_state}", style="dim"
+                            )
+                    else:
                         console.print(
-                            f"[DEBUG] API key command overridden to: {api_key_command}",
-                            style="dim",
+                            f"Warning: Could not load state from {load_state}",
+                            style="yellow",
+                        )
+                elif resume:
+                    state_loaded = self.load_state()
+                    if state_loaded:
+                        if verbose:
+                            console.print(
+                                "[DEBUG] Resumed from default state file", style="dim"
+                            )
+                    else:
+                        console.print(
+                            "Warning: Could not resume from default state file",
+                            style="yellow",
                         )
 
+                # Apply remaining CLI overrides that aren't handled by ConfigManager
                 if base_url:
-                    self.config.settings.base_url = base_url
                     self.api_client.base_url = base_url
                     if verbose:
                         console.print(
                             f"[DEBUG] Base URL overridden to: {base_url}", style="dim"
                         )
 
-                if query_file:
-                    self.config.settings.query_file = str(query_file)
-                    # Reload queries with new file
-                    self.queries = self.config.load_queries(str(query_file))
-                    if verbose:
-                        console.print(
-                            f"[DEBUG] Query file overridden to: {query_file}",
-                            style="dim",
-                        )
-
                 if report:
                     report_str = str(report)
                     if report_str.endswith(".csv"):
-                        # If user specified CSV, use it for CSV and derive JSON name
                         self.csv_report_file = report_str
                         self.json_report_file = report_str.replace(".csv", ".json")
                     elif report_str.endswith(".json"):
-                        # If user specified JSON, use it for JSON and derive CSV name
                         self.json_report_file = report_str
                         self.csv_report_file = report_str.replace(".json", ".csv")
                     else:
-                        # If no extension, add both
                         self.json_report_file = report_str + ".json"
                         self.csv_report_file = report_str + ".csv"
 
@@ -237,7 +271,8 @@ def main(
                             style="dim",
                         )
 
-                if no_clear:
+                # Handle no_clear option - only if no state was loaded
+                if not state_loaded and no_clear:
                     # Load existing JSON if it exists
                     if os.path.exists(self.json_report_file):
                         try:
@@ -264,6 +299,28 @@ def main(
                             self.queries, "gemini-2.5-flash"
                         )
 
+            def process_files_with_state_saving(self, file_paths):
+                """Process files with automatic state saving"""
+                try:
+                    # Process files normally
+                    self.process_files(file_paths)
+
+                    # Always save final state
+                    self.save_state("ask_llm_state.json")
+                    console.print(
+                        "💾 Final state saved to: ask_llm_state.json",
+                        style="bold blue",
+                    )
+
+                except Exception:
+                    # Save state even on error for recovery
+                    self.save_state("ask_llm_state_error.json")
+                    console.print(
+                        "💾 Error state saved to: ask_llm_state_error.json",
+                        style="bold yellow",
+                    )
+                    raise
+
         try:
             with Progress(
                 SpinnerColumn(),
@@ -278,7 +335,7 @@ def main(
                     )
 
                 analyzer = CLIAnalyzer()
-                analyzer.process_files(file_paths)
+                analyzer.process_files_with_state_saving(file_paths)
 
                 progress.update(task, description="✅ Processing complete!")
 

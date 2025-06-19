@@ -40,9 +40,26 @@ class Settings(BaseSettings):
 
 
 class ConfigManager:
-    def __init__(self, verbose=False):
+    def __init__(
+        self,
+        verbose=False,
+        query_file=None,
+        api_key=None,
+        base_url=None,
+        api_key_command=None,
+    ):
         self.verbose = verbose
         self.settings = Settings(verbose=verbose)
+
+        # Apply overrides before loading queries
+        if query_file:
+            self.settings.query_file = query_file
+        if api_key:
+            self.settings.api_key = api_key
+        if base_url:
+            self.settings.base_url = base_url
+        if api_key_command:
+            self.settings.api_key_command = api_key_command
 
     def get_api_key(self) -> str:
         """Get API key from environment or custom command"""
@@ -89,6 +106,36 @@ class ConfigManager:
                 "Tip: Set GEMINI_API_KEY environment variable or configure a different GEMINI_API_KEY_COMMAND"
             )
             sys.exit(1)
+
+    def save_state(
+        self, state_data: Dict[str, Any], filename: str = "ask_llm_state.json"
+    ):
+        """Save complete process state"""
+        if self.verbose:
+            print(f"[DEBUG] Saving state to {filename}")
+
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(state_data, f, indent=2, ensure_ascii=False)
+
+    def load_state(
+        self, filename: str = "ask_llm_state.json"
+    ) -> Optional[Dict[str, Any]]:
+        """Load complete process state"""
+        if self.verbose:
+            print(f"[DEBUG] Loading state from {filename}")
+
+        file_path = Path(filename)
+        if not file_path.exists():
+            if self.verbose:
+                print(f"[DEBUG] State file {filename} does not exist")
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid state file {filename}: {e}")
+            return None
 
     def load_queries(self, filename: Optional[str] = None) -> List[QueryConfig]:
         """Load and parse queries from text file"""

@@ -7,11 +7,8 @@ from typing import Dict, Any, List
 
 
 class SemanticScholarClient:
-    def __init__(self, verbose=False, auto_download_pdfs=True):
+    def __init__(self, verbose=False):
         self.verbose = verbose
-        self.auto_download_pdfs = (
-            auto_download_pdfs  # Keep for compatibility but won't download
-        )
         self.base_url = "https://api.semanticscholar.org/graph/v1"
         # Use requests_cache instead of requests
         self.session = requests_cache.CachedSession(
@@ -25,7 +22,6 @@ class SemanticScholarClient:
             print(
                 f"[DEBUG] Initialized Semantic Scholar client with base URL: {self.base_url}"
             )
-            print("[DEBUG] Using URL context instead of PDF downloads")
             print("[DEBUG] Using requests_cache with SQLite backend")
 
     def search_papers(
