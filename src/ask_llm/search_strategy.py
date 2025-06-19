@@ -225,11 +225,117 @@ class GoogleGroundingStrategy(SearchStrategy):
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
     ) -> Optional[tuple]:
         """Make an LLM query to search for PDF URLs using Google grounding, returning path and source URL"""
-        urls = self.discover_urls(metadata, query_text, response_data)
-        if urls:
-            # Return the first downloaded path and None for original URL (since discover_urls returns local paths)
-            return urls[0], None
-        return None
+
+        title = metadata.get("title", "")
+        authors = metadata.get("author", "")
+
+        if not title:
+            if self.verbose:
+                print("[DEBUG] No title available for Google grounding search")
+            return None
+
+        try:
+            # Helper function to process grounding results and return first successful download
+            def process_grounding_results(search_query, query_label):
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Making LLM query for PDF search ({query_label}): {search_query}"
+                    )
+
+                # Create payload with Google search enabled
+                payload = self.api_client.create_text_payload(search_query)
+                payload["tools"] = [{"googleSearch": {}}]
+
+                temp_query_config = QueryConfig(
+                    text=search_query,
+                    params={"google_search": True, "model": "gemini-2.5-flash"},
+                )
+
+                response_data = self.api_client.make_request(payload, temp_query_config)
+
+                # Extract grounding metadata
+                candidates = response_data.get("candidates", [])
+                if not candidates:
+                    return None
+
+                grounding_metadata = candidates[0].get("groundingMetadata")
+                if not grounding_metadata:
+                    if self.verbose:
+                        print(f"[DEBUG] No grounding metadata found for {query_label}")
+                    return None
+
+                # Extract URLs from grounding chunks
+                grounding_chunks = grounding_metadata.get("groundingChunks", [])
+                source_urls = []
+
+                for chunk in grounding_chunks:
+                    web_chunk = chunk.get("web", {})
+                    uri = web_chunk.get("uri")
+                    if uri:
+                        source_urls.append(uri)
+                        if self.verbose:
+                            print(f"[DEBUG] Found grounding URL ({query_label}): {uri}")
+
+                if source_urls:
+                    # Resolve redirects and extract PDF URLs
+                    pdf_urls = self.url_resolver.resolve_and_extract_pdfs(source_urls)
+
+                    # Download PDFs and return first successful download with its URL
+                    for pdf_url in pdf_urls:
+                        title = metadata.get("title", "grounding_result")
+                        downloaded_path = self.pdf_downloader.download_pdf(
+                            pdf_url, title
+                        )
+                        if downloaded_path:
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Downloaded PDF from {query_label}: {downloaded_path} from URL: {pdf_url}"
+                                )
+                            return downloaded_path, pdf_url
+
+                return None
+
+            # Create search query for the LLM
+            search_query = f'Find the PDF for this paper: "{title}"'
+            if authors:
+                first_author = authors.split(" and ")[0].split(",")[0].strip()
+                search_query += f" by {first_author}"
+            else:
+                first_author = ""
+            search_query += f'\n\nSuggested query: `intitle:"{title}" {first_author}  filetype:pdf -site:jstor.org -site:researchgate.net`'
+
+            # Try strict search first
+            result = process_grounding_results(search_query, "strict")
+            if result:
+                return result
+
+            # If no results found, try with relaxed query
+            if self.verbose:
+                print("[DEBUG] No PDFs found with strict query, trying relaxed query")
+
+            # Create relaxed search query
+            relaxed_search_query = f"Find the PDF for this paper: {title}"
+            if authors:
+                first_author = authors.split(" and ")[0].split(",")[0].strip()
+                relaxed_search_query += f" by {first_author}"
+
+            # Create relaxed suggested query without intitle: and quotes
+            relaxed_suggested = f"{title} {first_author if first_author else ''} filetype:pdf -site:jstor.org -site:researchgate.net".strip()
+            relaxed_search_query += f"\n\nSuggested query: `{relaxed_suggested}`"
+
+            # Try relaxed search
+            result = process_grounding_results(relaxed_search_query, "relaxed")
+            if result:
+                return result
+
+            if self.verbose:
+                print("[DEBUG] No PDFs found in either strict or relaxed search")
+            return None
+
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] Error in Google grounding search: {e}")
+            return None
 
 
 class QwantSearchStrategy(SearchStrategy):
