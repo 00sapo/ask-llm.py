@@ -23,3 +23,4 @@ gemini_api_cache.sqlite
 semantic_scholar_cache.sqlite
 pdf_search_cache.sqlite
 url_resolver_cache.sqlite
+pdf_download_cache.sqlite
