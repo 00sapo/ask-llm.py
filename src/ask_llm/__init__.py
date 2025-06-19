@@ -10,6 +10,12 @@ from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
 from .document_processor import DocumentProcessor
 from .semantic_scholar_processor import SemanticScholarProcessor
+from .url_resolver import URLResolver
+from .search_strategy import (
+    SearchStrategy,
+    GoogleGroundingStrategy,
+    QwantSearchStrategy,
+)
 
 __all__ = [
     "DocumentAnalyzer",
@@ -20,4 +26,8 @@ __all__ = [
     "SemanticScholarClient",
     "DocumentProcessor",
     "SemanticScholarProcessor",
+    "URLResolver",
+    "SearchStrategy",
+    "GoogleGroundingStrategy",
+    "QwantSearchStrategy",
 ]
