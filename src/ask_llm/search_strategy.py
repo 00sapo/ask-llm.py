@@ -30,6 +30,26 @@ class GoogleGroundingStrategy(SearchStrategy):
         self.url_resolver = url_resolver
         self.pdf_downloader = pdf_downloader
 
+    def _create_relaxed_query(self, original_query: str) -> str:
+        """Create a relaxed version of the search query by removing intitle: and quotes"""
+        relaxed_query = original_query
+
+        # Remove intitle: prefix and quotes around the title
+        import re
+
+        # Pattern to match intitle:"title" or similar
+        relaxed_query = re.sub(r'intitle:"([^"]*)"', r"\1", relaxed_query)
+        # Also handle cases without quotes after intitle:
+        relaxed_query = re.sub(r"intitle:([^\s]+)", r"\1", relaxed_query)
+
+        # Clean up extra spaces
+        relaxed_query = re.sub(r"\s+", " ", relaxed_query).strip()
+
+        if self.verbose:
+            print(f"[DEBUG] Created relaxed query: {relaxed_query}")
+
+        return relaxed_query
+
     def discover_urls(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
     ) -> List[str]:
@@ -108,6 +128,85 @@ class GoogleGroundingStrategy(SearchStrategy):
                             )
 
                 urls.extend(downloaded_paths)
+
+            # If no URLs found, try with relaxed query
+            if not urls:
+                if self.verbose:
+                    print(
+                        "[DEBUG] No PDFs found with strict query, trying relaxed query"
+                    )
+
+                # Create relaxed search query
+                relaxed_search_query = f"Find the PDF for this paper: {title}"
+                if authors:
+                    first_author = authors.split(" and ")[0].split(",")[0].strip()
+                    relaxed_search_query += f" by {first_author}"
+
+                # Create relaxed suggested query without intitle: and quotes
+                relaxed_suggested = f"{title} {first_author if first_author else ''} filetype:pdf -site:jstor.org -site:researchgate.net".strip()
+                relaxed_search_query += f"\n\nSuggested query: `{relaxed_suggested}`"
+
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Making relaxed LLM query for PDF search: {relaxed_search_query}"
+                    )
+
+                # Create payload for relaxed search
+                relaxed_payload = self.api_client.create_text_payload(
+                    relaxed_search_query
+                )
+                relaxed_payload["tools"] = [{"googleSearch": {}}]
+
+                relaxed_temp_query_config = QueryConfig(
+                    text=relaxed_search_query,
+                    params={"google_search": True, "model": "gemini-2.5-flash"},
+                )
+
+                relaxed_response_data = self.api_client.make_request(
+                    relaxed_payload, relaxed_temp_query_config
+                )
+
+                # Extract grounding metadata from relaxed search
+                relaxed_candidates = relaxed_response_data.get("candidates", [])
+                if relaxed_candidates:
+                    relaxed_grounding_metadata = relaxed_candidates[0].get(
+                        "groundingMetadata"
+                    )
+                    if relaxed_grounding_metadata:
+                        # Extract URLs from relaxed grounding chunks
+                        relaxed_grounding_chunks = relaxed_grounding_metadata.get(
+                            "groundingChunks", []
+                        )
+                        relaxed_source_urls = []
+
+                        for chunk in relaxed_grounding_chunks:
+                            web_chunk = chunk.get("web", {})
+                            uri = web_chunk.get("uri")
+                            if uri:
+                                relaxed_source_urls.append(uri)
+                                if self.verbose:
+                                    print(f"[DEBUG] Found relaxed grounding URL: {uri}")
+
+                        if relaxed_source_urls:
+                            # Resolve redirects and extract PDF URLs
+                            relaxed_pdf_urls = (
+                                self.url_resolver.resolve_and_extract_pdfs(
+                                    relaxed_source_urls
+                                )
+                            )
+
+                            # Download PDFs and return local paths
+                            for pdf_url in relaxed_pdf_urls:
+                                title = metadata.get("title", "grounding_result")
+                                downloaded_path = self.pdf_downloader.download_pdf(
+                                    pdf_url, title
+                                )
+                                if downloaded_path:
+                                    urls.append(downloaded_path)
+                                    if self.verbose:
+                                        print(
+                                            f"[DEBUG] Downloaded PDF from relaxed grounding: {downloaded_path}"
+                                        )
 
         except Exception as e:
             if self.verbose:
@@ -191,7 +290,7 @@ class QwantSearchStrategy(SearchStrategy):
         clean_title = self._clean_search_term(title)
         clean_authors = self._clean_search_term(authors) if authors else ""
 
-        # Create search query
+        # Create search query with quotes (strict search)
         if clean_authors:
             # Use first author only to avoid overly long queries
             first_author = clean_authors.split(" and ")[0].split(",")[0].strip()
@@ -200,20 +299,47 @@ class QwantSearchStrategy(SearchStrategy):
             search_query = f'"{clean_title}" filetype:pdf'
 
         if self.verbose:
-            print(f"[DEBUG] Searching for PDF: {search_query}")
+            print(f"[DEBUG] Searching for PDF with strict query: {search_query}")
 
         try:
             pdf_url = self._search_qwant(search_query)
             if pdf_url:
                 if self.verbose:
-                    print(f"[DEBUG] Found PDF URL: {pdf_url}")
+                    print(f"[DEBUG] Found PDF URL with strict search: {pdf_url}")
 
                 # Download PDF and return local path
                 return self.pdf_downloader.download_pdf(pdf_url, title)
             else:
                 if self.verbose:
-                    print("[DEBUG] No PDF found in search results")
-                return None
+                    print(
+                        "[DEBUG] No PDF found with strict search, trying relaxed query"
+                    )
+
+                # Try relaxed search without quotes
+                relaxed_search_query = f"{clean_title} {first_author if clean_authors else ''} filetype:pdf".strip()
+
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Searching for PDF with relaxed query: {relaxed_search_query}"
+                    )
+
+                # Add another rate limit pause for the second search
+                time.sleep(random.uniform(3, 7))
+                self.last_search_time = time.time()
+
+                relaxed_pdf_url = self._search_qwant(relaxed_search_query)
+                if relaxed_pdf_url:
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Found PDF URL with relaxed search: {relaxed_pdf_url}"
+                        )
+
+                    # Download PDF and return local path
+                    return self.pdf_downloader.download_pdf(relaxed_pdf_url, title)
+                else:
+                    if self.verbose:
+                        print("[DEBUG] No PDF found in relaxed search results")
+                    return None
 
         except Exception as e:
             if self.verbose:

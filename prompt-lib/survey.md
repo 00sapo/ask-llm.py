@@ -41,6 +41,8 @@ Answer to the following questions:
 - For which kind of music the methods described in the paper are designed?
 - For which historical period the methods described in the paper are designed?
 - Are the methods described in the paper include fuzzy methods?
+- How much are you confident in your answer? Consider the availability of PDF and the alignment
+  between the PDF (if any) and the metadata (0-1)
 
 ```json
 {
@@ -84,6 +86,13 @@ Answer to the following questions:
     "fuzzy": {
       "type": "boolean",
       "description": "Indicates whether the methods include fuzzy methods or not"
+    },
+    "certainty": {
+      "type": "number",
+      "description": "Confidence in the answer, between 0 and 1",
+      "minimum": 0,
+      "maximum": 1,
+      "format": "float"
     }
 
   },
@@ -91,7 +100,8 @@ Answer to the following questions:
     "music type",
     "data type",
     "historical period",
-    "fuzzy"
+    "fuzzy",
+    "certainty"
   ]
 }
 ```
