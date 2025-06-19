@@ -107,6 +107,36 @@ class ConfigManager:
             )
             sys.exit(1)
 
+    def save_state(
+        self, state_data: Dict[str, Any], filename: str = "ask_llm_state.json"
+    ):
+        """Save complete process state"""
+        if self.verbose:
+            print(f"[DEBUG] Saving state to {filename}")
+
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(state_data, f, indent=2, ensure_ascii=False)
+
+    def load_state(
+        self, filename: str = "ask_llm_state.json"
+    ) -> Optional[Dict[str, Any]]:
+        """Load complete process state"""
+        if self.verbose:
+            print(f"[DEBUG] Loading state from {filename}")
+
+        file_path = Path(filename)
+        if not file_path.exists():
+            if self.verbose:
+                print(f"[DEBUG] State file {filename} does not exist")
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid state file {filename}: {e}")
+            return None
+
     def load_queries(self, filename: Optional[str] = None) -> List[QueryConfig]:
         """Load and parse queries from text file"""
         query_file = filename or self.settings.query_file

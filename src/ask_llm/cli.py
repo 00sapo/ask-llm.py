@@ -36,6 +36,21 @@ def main(
         "--no-pdf-download",
         help="Disable automatic PDF downloading for missing files and use context url instead",
     ),
+    save_state: Optional[Path] = typer.Option(
+        None,
+        "--save-state",
+        help="Save process state to specified file",
+    ),
+    load_state: Optional[Path] = typer.Option(
+        None,
+        "--load-state",
+        help="Load and resume from saved state file",
+    ),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        help="Resume from default state file (ask_llm_state.json)",
+    ),
     query_file: Optional[Path] = typer.Option(
         None,
         "--query-file",
@@ -184,6 +199,33 @@ def main(
                     **config_overrides,
                 )
 
+                # Handle state loading
+                state_loaded = False
+                if load_state:
+                    state_loaded = self.load_state(str(load_state))
+                    if state_loaded:
+                        if verbose:
+                            console.print(
+                                f"[DEBUG] Loaded state from: {load_state}", style="dim"
+                            )
+                    else:
+                        console.print(
+                            f"Warning: Could not load state from {load_state}",
+                            style="yellow",
+                        )
+                elif resume:
+                    state_loaded = self.load_state()
+                    if state_loaded:
+                        if verbose:
+                            console.print(
+                                "[DEBUG] Resumed from default state file", style="dim"
+                            )
+                    else:
+                        console.print(
+                            "Warning: Could not resume from default state file",
+                            style="yellow",
+                        )
+
                 # Apply remaining CLI overrides that aren't handled by ConfigManager
                 if base_url:
                     self.api_client.base_url = base_url
@@ -225,7 +267,8 @@ def main(
                             style="dim",
                         )
 
-                if no_clear:
+                # Handle no_clear option - only if no state was loaded
+                if not state_loaded and no_clear:
                     # Load existing JSON if it exists
                     if os.path.exists(self.json_report_file):
                         try:
@@ -252,6 +295,33 @@ def main(
                             self.queries, "gemini-2.5-flash"
                         )
 
+            def process_files_with_state_saving(self, file_paths, save_state_file=None):
+                """Process files with automatic state saving"""
+                try:
+                    # Process files normally
+                    self.process_files(file_paths)
+
+                    # Save final state if requested
+                    if save_state_file:
+                        self.save_state(str(save_state_file))
+                        console.print(
+                            f"💾 Final state saved to: {save_state_file}",
+                            style="bold blue",
+                        )
+
+                except Exception:
+                    # Save state even on error for recovery
+                    if save_state_file:
+                        error_state_file = str(save_state_file).replace(
+                            ".json", "_error.json"
+                        )
+                        self.save_state(error_state_file)
+                        console.print(
+                            f"💾 Error state saved to: {error_state_file}",
+                            style="bold yellow",
+                        )
+                    raise
+
         try:
             with Progress(
                 SpinnerColumn(),
@@ -266,7 +336,10 @@ def main(
                     )
 
                 analyzer = CLIAnalyzer()
-                analyzer.process_files(file_paths)
+                if save_state:
+                    analyzer.process_files_with_state_saving(file_paths, save_state)
+                else:
+                    analyzer.process_files(file_paths)
 
                 progress.update(task, description="✅ Processing complete!")
 
