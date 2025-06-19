@@ -54,6 +54,7 @@ class URLResolver:
 
         return resolved_mapping
 
+    # this should return a string only,
     def extract_pdf_urls(self, urls: List[str]) -> List[str]:
         """Filter URLs to find likely PDF URLs"""
         pdf_urls = []
