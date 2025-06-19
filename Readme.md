@@ -23,12 +23,6 @@ Automate researcher life. Peer-review, systematic surveys, paper writing, and mo
 
 ---
 
-## NAME
-
-**ask-llm.py** — Analyze PDF documents (and optionally BibTeX bibliographies) using the Gemini LLM API, producing structured JSON reports. The installed command is typically `ask-llm`.
-
----
-
 ## SYNOPSIS
 
 ```sh
@@ -39,7 +33,19 @@ ask-llm [OPTIONS] [PDF|BIB]...
 
 ## DESCRIPTION
 
-**ask-llm** analyzes PDF documents and BibTeX bibliographies using Google's Gemini LLM API. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Semantic Scholar integration for paper discovery and Google Search for grounding. Ideal for systematic reviews and data extraction.
+**ask-llm** analyzes PDF documents, BibTeX bibliographies, search on Semantic Scholar, and retrieves PDFs from the web. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Gemini LLM for text analysis and generation, Semantic Scholar integration for paper discovery, Google Search for grounding, Qwant for PDF retrieval.
+
+### Things you can do with **ask-llm**
+
+- assist during peer-review of a paper
+- perform a systematic screening of papers
+- search for papers on a specific topic and analyze them
+- retrieve PDF urls of items in a bibtex
+
+### Things you will be able to do in the future
+
+- use the output of queries (i.e. JSON output) as input to further queries
+- use the output JSON to build a discursive report/paper
 
 ---
 
