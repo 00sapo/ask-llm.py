@@ -301,25 +301,104 @@ def main(
 
             def process_files_with_state_saving(self, file_paths):
                 """Process files with automatic state saving"""
-                try:
-                    # Process files normally
-                    self.process_files(file_paths)
+                state_file = "ask_llm_state.json"
+                error_state_file = "ask_llm_state_error.json"
 
-                    # Always save final state
-                    self.save_state("ask_llm_state.json")
+                # Save initial state before processing
+                try:
+                    if verbose:
+                        console.print(
+                            f"[DEBUG] Saving initial state to {state_file}", style="dim"
+                        )
+                    self.save_state(state_file)
                     console.print(
-                        "💾 Final state saved to: ask_llm_state.json",
-                        style="bold blue",
+                        f"💾 Initial state saved to: {state_file}", style="bold blue"
                     )
+                except Exception as e:
+                    console.print(
+                        f"Warning: Could not save initial state: {e}", style="yellow"
+                    )
+
+                try:
+                    # Process files normally with periodic state saving
+                    self.process_files_with_periodic_state_saving(
+                        file_paths, state_file
+                    )
+
+                    # Always save final state on successful completion
+                    try:
+                        self.save_state(state_file)
+                        console.print(
+                            "💾 Final state saved to: ask_llm_state.json",
+                            style="bold blue",
+                        )
+                    except Exception as e:
+                        console.print(
+                            f"Warning: Could not save final state: {e}", style="yellow"
+                        )
+
+                except KeyboardInterrupt:
+                    # Save state on user interruption
+                    try:
+                        self.save_state(error_state_file)
+                        console.print(
+                            f"💾 Interrupted state saved to: {error_state_file}",
+                            style="bold yellow",
+                        )
+                    except Exception as e:
+                        console.print(
+                            f"Warning: Could not save interrupted state: {e}",
+                            style="yellow",
+                        )
+                    raise
 
                 except Exception:
                     # Save state even on error for recovery
-                    self.save_state("ask_llm_state_error.json")
-                    console.print(
-                        "💾 Error state saved to: ask_llm_state_error.json",
-                        style="bold yellow",
-                    )
+                    try:
+                        self.save_state(error_state_file)
+                        console.print(
+                            f"💾 Error state saved to: {error_state_file}",
+                            style="bold yellow",
+                        )
+                    except Exception as save_error:
+                        console.print(
+                            f"Warning: Could not save error state: {save_error}",
+                            style="yellow",
+                        )
                     raise
+
+            def process_files_with_periodic_state_saving(self, file_paths, state_file):
+                """Process files with periodic state saving after each document"""
+                # Override the process_pdf method to save state after each document
+                original_process_pdf = self.process_pdf
+
+                def process_pdf_with_state_saving(*args, **kwargs):
+                    result = original_process_pdf(*args, **kwargs)
+                    # Save state after each document is processed
+                    try:
+                        if verbose:
+                            console.print(
+                                "[DEBUG] Saving state after document processing",
+                                style="dim",
+                            )
+                        self.save_state(state_file)
+                    except Exception as e:
+                        if verbose:
+                            console.print(
+                                f"[DEBUG] Warning: Could not save state after document: {e}",
+                                style="dim",
+                            )
+                    return result
+
+                # Temporarily replace the method
+                self.process_pdf = process_pdf_with_state_saving
+
+                try:
+                    # Call the original process_files method
+                    self.process_files(file_paths)
+                finally:
+                    # Restore the original method
+                    self.process_pdf = original_process_pdf
 
         try:
             with Progress(
