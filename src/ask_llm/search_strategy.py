@@ -52,9 +52,7 @@ class GoogleGroundingStrategy(SearchStrategy):
                 search_query += f" by {first_author}"
             else:
                 first_author = ""
-            search_query += (
-                f'\n\nSuggested query: `intitle:"{title}" {first_author}  filetype:pdf`'
-            )
+            search_query += f'\n\nSuggested query: `intitle:"{title}" {first_author}  filetype:pdf -site:jstor.org -site:researchgate.net`'
 
             if self.verbose:
                 print(f"[DEBUG] Making LLM query for PDF search: {search_query}")
