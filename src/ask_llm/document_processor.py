@@ -258,10 +258,15 @@ class DocumentProcessor:
 
             # Create appropriate prompt and payload
             if pdf_data:
-                # Use PDF processing for local or downloaded PDFs
-                query_text = (
-                    f"I'm attaching the PDF file {actual_path}\n\n{query_info.text}"
-                )
+                # Include metadata with PDF
+                metadata_text = ""
+                if metadata:
+                    metadata_text = self.bibtex_processor.format_metadata_for_prompt(
+                        metadata
+                    )
+                    metadata_text = f"\n\nDocument metadata:\n{metadata_text}"
+
+                query_text = f"I'm attaching the PDF file {actual_path}{metadata_text}\n\n{query_info.text}"
                 payload = self.api_client.create_pdf_payload(encoded_pdf, query_text)
             else:
                 # Use metadata for entries without accessible content
