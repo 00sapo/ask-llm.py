@@ -10,9 +10,8 @@ from bibtexparser.customization import convert_to_unicode, author, editor
 
 
 class BibtexProcessor:
-    def __init__(self, verbose=False, auto_download_pdfs=True):
+    def __init__(self, verbose=False):
         self.verbose = verbose
-        self.auto_download_pdfs = auto_download_pdfs  # Keep for compatibility
 
     def _create_parser(self):
         """Create a fresh parser instance"""

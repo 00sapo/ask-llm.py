@@ -19,29 +19,21 @@ class DocumentAnalyzer:
     def __init__(
         self,
         verbose=False,
-        auto_download_pdfs=True,
         use_qwant_strategy=False,
         **config_overrides,
     ):
         self.verbose = verbose
-        self.auto_download_pdfs = auto_download_pdfs
         self.use_qwant_strategy = use_qwant_strategy
 
         # Initialize core components with config overrides
         self.config = ConfigManager(verbose=verbose, **config_overrides)
-        self.bibtex_processor = BibtexProcessor(
-            verbose=verbose, auto_download_pdfs=auto_download_pdfs
-        )
+        self.bibtex_processor = BibtexProcessor(verbose=verbose)
         self.api_client = GeminiAPIClient(verbose=verbose)
         self.report_manager = ReportManager(verbose=verbose)
 
         # Initialize specialized components
-        self.semantic_scholar_client = SemanticScholarClient(
-            verbose=verbose, auto_download_pdfs=auto_download_pdfs
-        )
-        self.pdf_searcher = PDFSearcher(
-            verbose=verbose, enabled=True, download_pdfs=auto_download_pdfs
-        )
+        self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
+        self.pdf_searcher = PDFSearcher(verbose=verbose, enabled=True)
 
         # Initialize processors with strategy choice
         self.document_processor = DocumentProcessor(
@@ -64,10 +56,7 @@ class DocumentAnalyzer:
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
-            if auto_download_pdfs:
-                print("[DEBUG] PDF download mode enabled")
-            else:
-                print("[DEBUG] Using URL context instead of PDF downloads")
+            print("[DEBUG] PDF download mode enabled")
 
             strategy_name = "Qwant" if use_qwant_strategy else "Google grounding"
             print(f"[DEBUG] Using {strategy_name} search strategy")
@@ -102,7 +91,6 @@ class DocumentAnalyzer:
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "query_file": self.config.settings.query_file,
-                "auto_download_pdfs": self.auto_download_pdfs,
                 "use_qwant_strategy": self.use_qwant_strategy,
                 "processed_list": self.processed_list,
                 "logfile": self.logfile,
@@ -223,11 +211,10 @@ class DocumentAnalyzer:
         # Check if we discovered a URL for this document
         for doc in self.report_manager.results["documents"]:
             if doc["bibtex_key"] == bibtex_key and doc.get("pdf_source") in [
-                "searched_url",
                 "searched_download",
             ]:
                 # Find the URL from the document processing
-                if doc.get("is_url") and doc.get("file_path"):
+                if doc.get("file_path"):
                     discovered_urls[bibtex_key] = doc["file_path"]
                     if self.verbose:
                         print(
@@ -259,7 +246,6 @@ class DocumentAnalyzer:
                 f.write(
                     f"Metadata Only: {'Yes' if doc['is_metadata_only'] else 'No'}\n"
                 )
-                f.write(f"URL: {'Yes' if doc.get('is_url', False) else 'No'}\n")
                 f.write(f"PDF Source: {doc.get('pdf_source', 'unknown')}\n")
                 f.write(f"Filtered at Query: {doc.get('filtered_at_query', 'N/A')}\n")
                 f.write(f"Filter Reason: {doc.get('filter_reason', 'N/A')}\n")
@@ -310,9 +296,7 @@ class DocumentAnalyzer:
 
             # Record processed file
             with open(self.processed_list, "a", encoding="utf-8") as f:
-                if document_data.get("is_url"):
-                    f.write(f"URL:{document_data['file_path']}|{bibtex_key}\n")
-                elif document_data["is_metadata_only"]:
+                if document_data["is_metadata_only"]:
                     f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
                 else:
                     f.write(f"{document_data['file_path']}|{bibtex_key}\n")

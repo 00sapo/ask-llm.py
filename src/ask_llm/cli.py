@@ -31,11 +31,6 @@ def main(
         "--no-clear",
         help="Do not clear output files before processing (append mode)",
     ),
-    no_pdf_download: bool = typer.Option(
-        False,
-        "--no-pdf-download",
-        help="Disable automatic PDF downloading for missing files and use context url instead",
-    ),
     qwant: bool = typer.Option(
         False,
         "--qwant",
@@ -176,8 +171,7 @@ def main(
                 console.print(
                     "[DEBUG] Running with Semantic Scholar queries only", style="dim"
                 )
-            if no_pdf_download:
-                console.print("[DEBUG] PDF download disabled", style="dim")
+            console.print("[DEBUG] PDF download always enabled", style="dim")
             if qwant:
                 console.print("[DEBUG] Using Qwant search strategy", style="dim")
             else:
@@ -202,11 +196,9 @@ def main(
                 if base_url:
                     config_overrides["base_url"] = base_url
 
-                # Pass no_pdf_download option and qwant flag to parent constructor
-                auto_download_pdfs = not no_pdf_download
+                # Initialize with qwant flag (PDF download is always enabled now)
                 super().__init__(
                     verbose=verbose,
-                    auto_download_pdfs=auto_download_pdfs,
                     use_qwant_strategy=qwant,
                     **config_overrides,
                 )
