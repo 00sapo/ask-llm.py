@@ -14,12 +14,12 @@ from .semantic_scholar_processor import SemanticScholarProcessor
 
 
 class DocumentAnalyzer:
-    def __init__(self, verbose=False, auto_download_pdfs=True):
+    def __init__(self, verbose=False, auto_download_pdfs=True, **config_overrides):
         self.verbose = verbose
         self.auto_download_pdfs = auto_download_pdfs
 
-        # Initialize core components
-        self.config = ConfigManager(verbose=verbose)
+        # Initialize core components with config overrides
+        self.config = ConfigManager(verbose=verbose, **config_overrides)
         self.bibtex_processor = BibtexProcessor(
             verbose=verbose, auto_download_pdfs=auto_download_pdfs
         )
@@ -56,8 +56,8 @@ class DocumentAnalyzer:
             else:
                 print("[DEBUG] Using URL context instead of PDF downloads")
 
-        # Load configuration
-        self.queries = self.config.load_queries("query.md")
+        # Load configuration - now uses correct query file path
+        self.queries = self.config.load_queries()
 
         if self.verbose:
             print(f"[DEBUG] Loaded {len(self.queries)} queries")

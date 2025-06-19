@@ -40,9 +40,26 @@ class Settings(BaseSettings):
 
 
 class ConfigManager:
-    def __init__(self, verbose=False):
+    def __init__(
+        self,
+        verbose=False,
+        query_file=None,
+        api_key=None,
+        base_url=None,
+        api_key_command=None,
+    ):
         self.verbose = verbose
         self.settings = Settings(verbose=verbose)
+
+        # Apply overrides before loading queries
+        if query_file:
+            self.settings.query_file = query_file
+        if api_key:
+            self.settings.api_key = api_key
+        if base_url:
+            self.settings.base_url = base_url
+        if api_key_command:
+            self.settings.api_key_command = api_key_command
 
     def get_api_key(self) -> str:
         """Get API key from environment or custom command"""

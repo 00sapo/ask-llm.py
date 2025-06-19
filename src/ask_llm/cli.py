@@ -162,57 +162,45 @@ def main(
         # Convert Path objects to strings for compatibility (files might be empty)
         file_paths = [str(f) for f in files] if files else []
 
-        # Patch DocumentAnalyzer with CLI overrides
+        # Create simplified CLIAnalyzer
         class CLIAnalyzer(DocumentAnalyzer):
             def __init__(self):
+                # Prepare config overrides
+                config_overrides = {}
+                if query_file:
+                    config_overrides["query_file"] = str(query_file)
+                if api_key:
+                    config_overrides["api_key"] = api_key
+                if api_key_command:
+                    config_overrides["api_key_command"] = api_key_command
+                if base_url:
+                    config_overrides["base_url"] = base_url
+
                 # Pass no_pdf_download option to parent constructor
                 auto_download_pdfs = not no_pdf_download
-                super().__init__(verbose=verbose, auto_download_pdfs=auto_download_pdfs)
+                super().__init__(
+                    verbose=verbose,
+                    auto_download_pdfs=auto_download_pdfs,
+                    **config_overrides,
+                )
 
-                # Override config settings with CLI options
-                if api_key:
-                    self.config.settings.api_key = api_key
-                    if verbose:
-                        console.print("[DEBUG] API key overridden via CLI", style="dim")
-
-                if api_key_command:
-                    self.config.settings.api_key_command = api_key_command
-                    if verbose:
-                        console.print(
-                            f"[DEBUG] API key command overridden to: {api_key_command}",
-                            style="dim",
-                        )
-
+                # Apply remaining CLI overrides that aren't handled by ConfigManager
                 if base_url:
-                    self.config.settings.base_url = base_url
                     self.api_client.base_url = base_url
                     if verbose:
                         console.print(
                             f"[DEBUG] Base URL overridden to: {base_url}", style="dim"
                         )
 
-                if query_file:
-                    self.config.settings.query_file = str(query_file)
-                    # Reload queries with new file
-                    self.queries = self.config.load_queries(str(query_file))
-                    if verbose:
-                        console.print(
-                            f"[DEBUG] Query file overridden to: {query_file}",
-                            style="dim",
-                        )
-
                 if report:
                     report_str = str(report)
                     if report_str.endswith(".csv"):
-                        # If user specified CSV, use it for CSV and derive JSON name
                         self.csv_report_file = report_str
                         self.json_report_file = report_str.replace(".csv", ".json")
                     elif report_str.endswith(".json"):
-                        # If user specified JSON, use it for JSON and derive CSV name
                         self.json_report_file = report_str
                         self.csv_report_file = report_str.replace(".json", ".csv")
                     else:
-                        # If no extension, add both
                         self.json_report_file = report_str + ".json"
                         self.csv_report_file = report_str + ".csv"
 

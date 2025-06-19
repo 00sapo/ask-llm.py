@@ -21,3 +21,4 @@ semantic_scholar.bib
 semantic_scholar_results.bib
 gemini_api_cache.sqlite
 semantic_scholar_cache.sqlite
+pdf_search_cache.sqlite
