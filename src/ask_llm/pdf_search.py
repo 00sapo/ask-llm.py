@@ -6,6 +6,7 @@ import tempfile
 import time
 import random
 from typing import Optional
+from urllib.parse import urlencode
 
 import requests_cache
 
@@ -168,8 +169,14 @@ class PDFSearcher:
             }
 
             if self.verbose:
-                print(f"[DEBUG] Making request to: {url}")
-                print(f"[DEBUG] Parameters: {params}")
+                curl_command = "curl '" + url + "?"
+                curl_command += urlencode(params) + "' "
+                for key, value in headers.items():
+                    curl_command += f"-H '{key}: {value}' "
+                curl_command += "--compressed"
+                print(
+                    f"Making request to Qwant API, corresponding curl: {curl_command}"
+                )
 
             response = self.session.get(url, params=params, headers=headers, timeout=30)
             response.raise_for_status()
