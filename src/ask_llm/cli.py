@@ -36,11 +36,6 @@ def main(
         "--qwant",
         help="Use Qwant search strategy instead of Google grounding (default)",
     ),
-    save_state: Optional[Path] = typer.Option(
-        None,
-        "--save-state",
-        help="Save process state to specified file",
-    ),
     load_state: Optional[Path] = typer.Option(
         None,
         "--load-state",
@@ -97,6 +92,8 @@ def main(
 
     Files are optional when using Semantic Scholar queries. You can run with just
     a query file that contains semantic-scholar: true parameters.
+
+    State is automatically saved to ask_llm_state.json for recovery purposes.
     """
 
     # If no subcommand was invoked, process files or run semantic scholar queries
@@ -172,6 +169,9 @@ def main(
                     "[DEBUG] Running with Semantic Scholar queries only", style="dim"
                 )
             console.print("[DEBUG] PDF download always enabled", style="dim")
+            console.print(
+                "[DEBUG] State saving enabled (ask_llm_state.json)", style="dim"
+            )
             if qwant:
                 console.print("[DEBUG] Using Qwant search strategy", style="dim")
             else:
@@ -299,31 +299,26 @@ def main(
                             self.queries, "gemini-2.5-flash"
                         )
 
-            def process_files_with_state_saving(self, file_paths, save_state_file=None):
+            def process_files_with_state_saving(self, file_paths):
                 """Process files with automatic state saving"""
                 try:
                     # Process files normally
                     self.process_files(file_paths)
 
-                    # Save final state if requested
-                    if save_state_file:
-                        self.save_state(str(save_state_file))
-                        console.print(
-                            f"💾 Final state saved to: {save_state_file}",
-                            style="bold blue",
-                        )
+                    # Always save final state
+                    self.save_state("ask_llm_state.json")
+                    console.print(
+                        "💾 Final state saved to: ask_llm_state.json",
+                        style="bold blue",
+                    )
 
                 except Exception:
                     # Save state even on error for recovery
-                    if save_state_file:
-                        error_state_file = str(save_state_file).replace(
-                            ".json", "_error.json"
-                        )
-                        self.save_state(error_state_file)
-                        console.print(
-                            f"💾 Error state saved to: {error_state_file}",
-                            style="bold yellow",
-                        )
+                    self.save_state("ask_llm_state_error.json")
+                    console.print(
+                        "💾 Error state saved to: ask_llm_state_error.json",
+                        style="bold yellow",
+                    )
                     raise
 
         try:
@@ -340,10 +335,7 @@ def main(
                     )
 
                 analyzer = CLIAnalyzer()
-                if save_state:
-                    analyzer.process_files_with_state_saving(file_paths, save_state)
-                else:
-                    analyzer.process_files(file_paths)
+                analyzer.process_files_with_state_saving(file_paths)
 
                 progress.update(task, description="✅ Processing complete!")
 
