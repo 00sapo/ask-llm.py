@@ -71,9 +71,10 @@ class DocumentProcessor:
         return None
 
     def _search_for_pdf(self, metadata, query_text="", response_data=None):
-        """Search for PDF using the configured strategy and always download"""
+        """Search for PDF using the configured strategy and always download
+        Returns tuple of (downloaded_path, original_url)"""
         if not metadata:
-            return None
+            return None, None
 
         if self.verbose:
             strategy_name = "Qwant" if self.use_qwant_strategy else "Google grounding"
@@ -84,30 +85,31 @@ class DocumentProcessor:
             print(f"🔍 Searching for PDF: {title}")
 
         try:
-            # Use strategy to discover URLs
-            urls = self.search_strategy.discover_urls(
+            # Use strategy to discover URLs and get both path and original URL
+            result = self.search_strategy.discover_urls_with_source(
                 metadata, query_text or "", response_data or {}
             )
 
-            if urls:
-                # Return first discovered URL (should be downloaded PDF path)
-                result = urls[0]
+            if result:
+                downloaded_path, original_url = result
                 if self.verbose:
-                    print(f"[DEBUG] Downloaded PDF to: {result}")
+                    print(
+                        f"[DEBUG] Downloaded PDF to: {downloaded_path} from URL: {original_url}"
+                    )
                     # Track downloaded file for cleanup
-                    self.downloaded_pdfs.append(result)
-                print(f"✅ PDF downloaded: {result}")
-                return result
+                    self.downloaded_pdfs.append(downloaded_path)
+                print(f"✅ PDF downloaded: {downloaded_path}")
+                return downloaded_path, original_url
             else:
                 if self.verbose:
                     print("[DEBUG] PDF search did not find any results")
                 print("❌ PDF search failed: No results found")
-                return None
+                return None, None
         except Exception as e:
             if self.verbose:
                 print(f"[DEBUG] PDF search failed with error: {e}")
             print(f"❌ PDF search failed: {e}")
-            return None
+            return None, None
 
     def _evaluate_filter(self, response, filter_field, document_data, query_id):
         """Evaluate filter immediately after query processing.
@@ -169,6 +171,7 @@ class DocumentProcessor:
         pdf_data = None
         metadata = None
         pdf_source = "unknown"
+        pdf_url = None  # Track original URL for downloaded PDFs
 
         # Try to find PDF file first
         if pdf_path:
@@ -202,11 +205,12 @@ class DocumentProcessor:
                 )
 
                 # Try to search for PDF using metadata
-                search_result = self._search_for_pdf(metadata)
+                search_result, original_url = self._search_for_pdf(metadata)
 
                 if search_result:
                     # Search result should be downloaded file path
                     actual_path = search_result
+                    pdf_url = original_url  # Store the original URL
                     try:
                         with open(actual_path, "rb") as f:
                             pdf_data = f.read()
@@ -215,7 +219,7 @@ class DocumentProcessor:
                                 pdf_source = "searched_download"
                                 if self.verbose:
                                     print(
-                                        f"[DEBUG] Using downloaded PDF: {actual_path}"
+                                        f"[DEBUG] Using downloaded PDF: {actual_path} from URL: {pdf_url}"
                                     )
                     except Exception as e:
                         print(
@@ -224,6 +228,7 @@ class DocumentProcessor:
                         )
                         # Fallback to metadata
                         pdf_source = "metadata_only"
+                        pdf_url = None  # Clear URL if we can't use the downloaded file
                         if self.verbose:
                             print(f"[DEBUG] Falling back to metadata for {bibtex_key}")
                         print(f"📚 Using metadata only: {bibtex_key}")
@@ -247,6 +252,7 @@ class DocumentProcessor:
             "bibtex_metadata": metadata or {},
             "is_metadata_only": pdf_source == "metadata_only",
             "pdf_source": pdf_source,  # Track how the PDF was obtained
+            "pdf_url": pdf_url,  # Track original URL for downloaded PDFs
             "is_filtered_out": False,  # Track if document was filtered during processing
             "filtered_at_query": None,  # Which query caused the filtering
             "filter_reason": None,  # Reason for filtering
@@ -317,37 +323,79 @@ class DocumentProcessor:
                     and query_info.params.get("google_search", False)
                     and grounding_metadata
                 ):
-                    discovered_urls = self.search_strategy.discover_urls(
-                        metadata or {}, query_text, response_data
-                    )
+                    try:
+                        discovered_result = (
+                            self.search_strategy.discover_urls_with_source(
+                                metadata or {}, query_text, response_data
+                            )
+                        )
 
-                    if discovered_urls and not actual_path:
-                        # Download first discovered PDF
-                        downloaded_path = discovered_urls[0]
-                        if downloaded_path and os.path.exists(downloaded_path):
-                            actual_path = downloaded_path
-                            pdf_source = "searched_download"
-                            document_data["file_path"] = downloaded_path
-                            document_data["pdf_source"] = pdf_source
-                            # Track for cleanup
-                            self.downloaded_pdfs.append(downloaded_path)
+                        if discovered_result and not actual_path:
+                            # Download first discovered PDF
+                            downloaded_path, original_url = discovered_result
+                            if downloaded_path and os.path.exists(downloaded_path):
+                                actual_path = downloaded_path
+                                pdf_source = "searched_download"
+                                pdf_url = original_url
+                                document_data["file_path"] = downloaded_path
+                                document_data["pdf_source"] = pdf_source
+                                document_data["pdf_url"] = pdf_url
+                                # Track for cleanup
+                                self.downloaded_pdfs.append(downloaded_path)
 
-                            # Try to read the downloaded PDF for subsequent queries
-                            try:
-                                with open(actual_path, "rb") as f:
-                                    pdf_data = f.read()
-                                    if pdf_data:
-                                        encoded_pdf = base64.b64encode(pdf_data).decode(
-                                            "utf-8"
+                                # Try to read the downloaded PDF for subsequent queries
+                                try:
+                                    with open(actual_path, "rb") as f:
+                                        pdf_data = f.read()
+                                        if pdf_data:
+                                            encoded_pdf = base64.b64encode(
+                                                pdf_data
+                                            ).decode("utf-8")
+                                            document_data["is_metadata_only"] = False
+                                            if self.verbose:
+                                                print(
+                                                    f"[DEBUG] Downloaded and loaded PDF from Google grounding: {downloaded_path} from URL: {pdf_url}"
+                                                )
+                                except Exception as e:
+                                    if self.verbose:
+                                        print(
+                                            f"[DEBUG] Could not read downloaded PDF: {e}"
                                         )
-                                        document_data["is_metadata_only"] = False
-                                        if self.verbose:
-                                            print(
-                                                f"[DEBUG] Downloaded and loaded PDF from Google grounding: {downloaded_path}"
-                                            )
-                            except Exception as e:
-                                if self.verbose:
-                                    print(f"[DEBUG] Could not read downloaded PDF: {e}")
+                    except AttributeError:
+                        # Fallback to old method if discover_urls_with_source doesn't exist
+                        discovered_urls = self.search_strategy.discover_urls(
+                            metadata or {}, query_text, response_data
+                        )
+
+                        if discovered_urls and not actual_path:
+                            # Download first discovered PDF
+                            downloaded_path = discovered_urls[0]
+                            if downloaded_path and os.path.exists(downloaded_path):
+                                actual_path = downloaded_path
+                                pdf_source = "searched_download"
+                                document_data["file_path"] = downloaded_path
+                                document_data["pdf_source"] = pdf_source
+                                # Track for cleanup
+                                self.downloaded_pdfs.append(downloaded_path)
+
+                                # Try to read the downloaded PDF for subsequent queries
+                                try:
+                                    with open(actual_path, "rb") as f:
+                                        pdf_data = f.read()
+                                        if pdf_data:
+                                            encoded_pdf = base64.b64encode(
+                                                pdf_data
+                                            ).decode("utf-8")
+                                            document_data["is_metadata_only"] = False
+                                            if self.verbose:
+                                                print(
+                                                    f"[DEBUG] Downloaded and loaded PDF from Google grounding: {downloaded_path}"
+                                                )
+                                except Exception as e:
+                                    if self.verbose:
+                                        print(
+                                            f"[DEBUG] Could not read downloaded PDF: {e}"
+                                        )
 
                 if self.verbose:
                     print(

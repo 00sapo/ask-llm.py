@@ -96,6 +96,15 @@ def main(
     State is automatically saved to ask_llm_state.json for recovery purposes.
     """
 
+    # When using --resume, automatically enable --no-clear
+    if resume:
+        no_clear = True
+        if verbose:
+            console.print(
+                "[DEBUG] --resume enabled, automatically setting --no-clear",
+                style="dim",
+            )
+
     # If no subcommand was invoked, process files or run semantic scholar queries
     if ctx.invoked_subcommand is None:
         # Check if we have a query file to determine if Semantic Scholar queries might be present
@@ -279,7 +288,24 @@ def main(
                             with open(
                                 self.json_report_file, "r", encoding="utf-8"
                             ) as f:
-                                self.report_manager.results = json.load(f)
+                                existing_data = json.load(f)
+                                # Merge with current results structure
+                                if "documents" in existing_data:
+                                    self.report_manager.results["documents"] = (
+                                        existing_data["documents"]
+                                    )
+                                if "metadata" in existing_data:
+                                    # Preserve some metadata but update timestamp
+                                    self.report_manager.results["metadata"].update(
+                                        {
+                                            "total_documents": existing_data[
+                                                "metadata"
+                                            ].get("total_documents", 0),
+                                            "filtered_out_count": existing_data[
+                                                "metadata"
+                                            ].get("filtered_out_count", 0),
+                                        }
+                                    )
                             if verbose:
                                 console.print(
                                     f"[DEBUG] Loaded existing JSON with {len(self.report_manager.results['documents'])} documents",

@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import List
 
 from .config import ConfigManager
 from .bibtex import BibtexProcessor
@@ -108,7 +107,6 @@ class DocumentAnalyzer:
             ],
             "report_data": self.report_manager.results,
             "filtered_out_documents": self.filtered_out_documents,
-            "processed_files": self._get_processed_files(),
         }
 
         self.config.save_state(state_data, state_file)
@@ -150,10 +148,6 @@ class DocumentAnalyzer:
             if "filtered_out_documents" in state_data:
                 self.filtered_out_documents = state_data["filtered_out_documents"]
 
-            # Restore processed files list
-            if "processed_files" in state_data:
-                self._restore_processed_files(state_data["processed_files"])
-
             if self.verbose:
                 doc_count = len(self.report_manager.results.get("documents", []))
                 filtered_count = len(self.filtered_out_documents)
@@ -167,41 +161,40 @@ class DocumentAnalyzer:
             print(f"Error restoring state: {e}")
             return False
 
-    def _get_processed_files(self) -> List[str]:
-        """Get list of processed files"""
-        try:
-            if os.path.exists(self.processed_list):
-                with open(self.processed_list, "r", encoding="utf-8") as f:
-                    return f.read().splitlines()
-        except Exception:
-            pass
-        return []
-
-    def _restore_processed_files(self, processed_files: List[str]):
-        """Restore processed files list"""
-        try:
-            with open(self.processed_list, "w", encoding="utf-8") as f:
-                f.write("\n".join(processed_files))
-        except Exception as e:
-            if self.verbose:
-                print(f"[DEBUG] Could not restore processed files list: {e}")
-
     def _should_skip_processed_file(self, pdf_path: str, bibtex_key: str) -> bool:
-        """Check if file was already processed based on state"""
-        processed_files = self._get_processed_files()
-
-        # Check various formats that might be in processed list
-        search_patterns = [
-            f"{pdf_path}|{bibtex_key}",
-            f"URL:{pdf_path}|{bibtex_key}",
-            f"METADATA:{bibtex_key}|{bibtex_key}",
-            pdf_path,  # Just the path
-        ]
-
-        for pattern in search_patterns:
-            if pattern in processed_files:
+        """Check if file was already processed based on current report state"""
+        # Check if document already exists in current results
+        for doc in self.report_manager.results.get("documents", []):
+            # Match by bibtex_key if available
+            if bibtex_key and doc.get("bibtex_key") == bibtex_key:
                 if self.verbose:
-                    print(f"[DEBUG] Skipping already processed: {pattern}")
+                    print(
+                        f"[DEBUG] Skipping already processed document with bibtex_key: {bibtex_key}"
+                    )
+                return True
+
+            # Match by file path
+            if pdf_path and doc.get("file_path") == pdf_path:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Skipping already processed document with path: {pdf_path}"
+                    )
+                return True
+
+        # Also check filtered out documents
+        for doc in self.filtered_out_documents:
+            if bibtex_key and doc.get("bibtex_key") == bibtex_key:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Skipping already filtered document with bibtex_key: {bibtex_key}"
+                    )
+                return True
+
+            if pdf_path and doc.get("file_path") == pdf_path:
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Skipping already filtered document with path: {pdf_path}"
+                    )
                 return True
 
         return False
@@ -264,7 +257,11 @@ class DocumentAnalyzer:
                 print(f"[DEBUG] Skipping already processed: {pdf_path or bibtex_key}")
             return True
 
-        document_id = len(self.report_manager.results["documents"]) + 1
+        document_id = (
+            len(self.report_manager.results["documents"])
+            + len(self.filtered_out_documents)
+            + 1
+        )
 
         document_data, success = self.document_processor.process_document(
             pdf_path,
@@ -299,13 +296,6 @@ class DocumentAnalyzer:
                     f"[DEBUG] Successfully processed document for {pdf_path or bibtex_key}"
                 )
 
-            # Record processed file
-            with open(self.processed_list, "a", encoding="utf-8") as f:
-                if document_data["is_metadata_only"]:
-                    f.write(f"METADATA:{bibtex_key}|{bibtex_key}\n")
-                else:
-                    f.write(f"{document_data['file_path']}|{bibtex_key}\n")
-
             # Flush JSON and CSV output after each document
             self.report_manager.save_json_report(self.json_report_file)
             self.report_manager.save_csv_report(self.csv_report_file)
@@ -335,9 +325,25 @@ class DocumentAnalyzer:
                 q.params.get("semantic_scholar", False) for q in self.queries
             )
 
-            # Process Semantic Scholar queries first if any exist
-            semantic_scholar_bibtex = ""
+            # Check if we already have Semantic Scholar results when resuming
+            has_existing_semantic_scholar_results = False
             if has_semantic_scholar:
+                # Check if any existing documents came from Semantic Scholar
+                for doc in self.report_manager.results.get("documents", []):
+                    if doc.get("bibtex_key", "").startswith("semanticscholar_"):
+                        has_existing_semantic_scholar_results = True
+                        break
+
+                # Also check filtered documents
+                if not has_existing_semantic_scholar_results:
+                    for doc in self.filtered_out_documents:
+                        if doc.get("bibtex_key", "").startswith("semanticscholar_"):
+                            has_existing_semantic_scholar_results = True
+                            break
+
+            # Process Semantic Scholar queries first if any exist and not already processed
+            semantic_scholar_bibtex = ""
+            if has_semantic_scholar and not has_existing_semantic_scholar_results:
                 if self.verbose:
                     print("[DEBUG] Processing Semantic Scholar queries")
                 semantic_scholar_bibtex = (
@@ -345,6 +351,12 @@ class DocumentAnalyzer:
                         self.queries
                     )
                 )
+            elif has_semantic_scholar and has_existing_semantic_scholar_results:
+                if self.verbose:
+                    print(
+                        "[DEBUG] Skipping Semantic Scholar queries - already processed in previous run"
+                    )
+                print("⏭️  Skipping Semantic Scholar queries (already processed)")
 
             # Separate file types
             bibtex_files = [f for f in files if f.endswith(".bib")]
