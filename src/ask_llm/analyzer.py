@@ -206,14 +206,20 @@ class DocumentAnalyzer:
             if doc["bibtex_key"] == bibtex_key and doc.get("pdf_source") in [
                 "searched_download",
             ]:
-                # Find the URL from the document processing
-                if doc.get("file_path"):
+                # Use the original URL if available, otherwise fall back to file path
+                if doc.get("pdf_url"):
+                    discovered_urls[bibtex_key] = doc["pdf_url"]
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['pdf_url']}"
+                        )
+                elif doc.get("file_path"):
                     discovered_urls[bibtex_key] = doc["file_path"]
                     if self.verbose:
                         print(
-                            f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['file_path']}"
+                            f"[DEBUG] Tracked discovered file path for {bibtex_key}: {doc['file_path']}"
                         )
-                    break
+                break
 
     def _save_filtered_out_list(self):
         """Save list of filtered out documents"""
@@ -240,6 +246,7 @@ class DocumentAnalyzer:
                     f"Metadata Only: {'Yes' if doc['is_metadata_only'] else 'No'}\n"
                 )
                 f.write(f"PDF Source: {doc.get('pdf_source', 'unknown')}\n")
+                f.write(f"PDF URL: {doc.get('pdf_url', 'N/A')}\n")
                 f.write(f"Filtered at Query: {doc.get('filtered_at_query', 'N/A')}\n")
                 f.write(f"Filter Reason: {doc.get('filter_reason', 'N/A')}\n")
                 f.write("-" * 40 + "\n")
@@ -496,7 +503,7 @@ class DocumentAnalyzer:
 
                 if total_updated > 0:
                     print(
-                        f"Updated {total_updated} BibTeX entries with discovered URLs"
+                        f"✅ Updated {total_updated} BibTeX entries with discovered URLs"
                     )
 
             # Update filtered out count in metadata
