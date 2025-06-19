@@ -1,6 +1,6 @@
 # ask-llm.py
 
-Automate boring stuffs in research with LLMs.
+Automate researcher life. Peer-review, systematic surveys, paper writing, and more.
 
 ## Table of Contents
 
