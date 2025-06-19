@@ -38,7 +38,7 @@ class DocumentProcessor:
         else:
             url_resolver = URLResolver(verbose=verbose)
             self.search_strategy = GoogleGroundingStrategy(
-                url_resolver, verbose=verbose
+                self.api_client, url_resolver, verbose=verbose
             )
             if self.verbose:
                 print("[DEBUG] Using Google grounding search strategy")
@@ -311,34 +311,7 @@ class DocumentProcessor:
                     metadata
                 )
 
-                # Let strategy modify the query if needed
-                modified_query_text, enable_google_search = (
-                    self.search_strategy.modify_query(
-                        f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}",
-                        metadata or {},
-                    )
-                )
-
-                # Override google_search parameter if strategy suggests it
-                if enable_google_search and not query_info.params.get(
-                    "google_search", False
-                ):
-                    # Create a copy of params with google_search enabled
-                    modified_params = query_info.params.copy()
-                    modified_params["google_search"] = True
-                    # Create a temporary query config for this request
-                    from .config import QueryConfig
-
-                    temp_query_info = QueryConfig(
-                        text=modified_query_text,
-                        params=modified_params,
-                        structure=query_info.structure,
-                        filter_on=query_info.filter_on,
-                    )
-                    query_text = modified_query_text
-                    query_info = temp_query_info
-                else:
-                    query_text = modified_query_text
+                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}"
 
                 payload = self.api_client.create_text_payload(query_text)
 
