@@ -16,9 +16,16 @@ from .semantic_scholar_processor import SemanticScholarProcessor
 
 
 class DocumentAnalyzer:
-    def __init__(self, verbose=False, auto_download_pdfs=True, **config_overrides):
+    def __init__(
+        self,
+        verbose=False,
+        auto_download_pdfs=True,
+        use_qwant_strategy=False,
+        **config_overrides,
+    ):
         self.verbose = verbose
         self.auto_download_pdfs = auto_download_pdfs
+        self.use_qwant_strategy = use_qwant_strategy
 
         # Initialize core components with config overrides
         self.config = ConfigManager(verbose=verbose, **config_overrides)
@@ -36,9 +43,13 @@ class DocumentAnalyzer:
             verbose=verbose, enabled=True, download_pdfs=auto_download_pdfs
         )
 
-        # Initialize processors
+        # Initialize processors with strategy choice
         self.document_processor = DocumentProcessor(
-            self.api_client, self.bibtex_processor, self.pdf_searcher, verbose=verbose
+            self.api_client,
+            self.bibtex_processor,
+            self.pdf_searcher,
+            verbose=verbose,
+            use_qwant_strategy=use_qwant_strategy,
         )
         self.semantic_scholar_processor = SemanticScholarProcessor(
             self.semantic_scholar_client, verbose=verbose
@@ -57,6 +68,9 @@ class DocumentAnalyzer:
                 print("[DEBUG] PDF download mode enabled")
             else:
                 print("[DEBUG] Using URL context instead of PDF downloads")
+
+            strategy_name = "Qwant" if use_qwant_strategy else "Google grounding"
+            print(f"[DEBUG] Using {strategy_name} search strategy")
 
         # Load configuration - now uses correct query file path
         self.queries = self.config.load_queries()
@@ -89,6 +103,7 @@ class DocumentAnalyzer:
             "config": {
                 "query_file": self.config.settings.query_file,
                 "auto_download_pdfs": self.auto_download_pdfs,
+                "use_qwant_strategy": self.use_qwant_strategy,
                 "processed_list": self.processed_list,
                 "logfile": self.logfile,
                 "json_report_file": self.json_report_file,
@@ -129,6 +144,15 @@ class DocumentAnalyzer:
                 "json_report_file", self.json_report_file
             )
             self.csv_report_file = config.get("csv_report_file", self.csv_report_file)
+
+            # Restore strategy setting if available
+            if "use_qwant_strategy" in config:
+                self.use_qwant_strategy = config["use_qwant_strategy"]
+                if self.verbose:
+                    strategy_name = (
+                        "Qwant" if self.use_qwant_strategy else "Google grounding"
+                    )
+                    print(f"[DEBUG] Restored search strategy: {strategy_name}")
 
             # Restore report data
             if "report_data" in state_data:

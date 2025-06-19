@@ -8,6 +8,8 @@ import os
 from .api import GeminiAPIClient
 from .bibtex import BibtexProcessor
 from .pdf_search import PDFSearcher
+from .search_strategy import GoogleGroundingStrategy, QwantSearchStrategy
+from .url_resolver import URLResolver
 
 
 class DocumentProcessor:
@@ -17,12 +19,29 @@ class DocumentProcessor:
         bibtex_processor: BibtexProcessor,
         pdf_searcher: PDFSearcher,
         verbose=False,
+        use_qwant_strategy=False,
     ):
         self.api_client = api_client
         self.bibtex_processor = bibtex_processor
         self.pdf_searcher = pdf_searcher
         self.verbose = verbose
+        self.use_qwant_strategy = use_qwant_strategy
         self.downloaded_pdfs = []  # Track downloaded PDF files for cleanup
+
+        # Initialize search strategy
+        if use_qwant_strategy:
+            self.search_strategy = QwantSearchStrategy(
+                self.pdf_searcher, verbose=verbose
+            )
+            if self.verbose:
+                print("[DEBUG] Using Qwant search strategy")
+        else:
+            url_resolver = URLResolver(verbose=verbose)
+            self.search_strategy = GoogleGroundingStrategy(
+                url_resolver, verbose=verbose
+            )
+            if self.verbose:
+                print("[DEBUG] Using Google grounding search strategy")
 
     def _find_pdf_file(self, pdf_path, bibtex_dir=None):
         """Find PDF file in common locations if not found at given path"""
@@ -48,27 +67,28 @@ class DocumentProcessor:
             print("[DEBUG] PDF file not found in any location")
         return None
 
-    def _search_for_pdf(self, metadata):
-        """Search for PDF using title and authors from metadata"""
+    def _search_for_pdf(self, metadata, query_text="", response_data=None):
+        """Search for PDF using the configured strategy"""
         if not metadata:
             return None
 
-        title = metadata.get("title", "")
-        authors = metadata.get("author", "")
-
-        if not title:
-            if self.verbose:
-                print("[DEBUG] No title available for PDF search")
-            return None
-
         if self.verbose:
-            print(f"[DEBUG] Searching for PDF using title: {title[:50]}...")
+            strategy_name = "Qwant" if self.use_qwant_strategy else "Google grounding"
+            print(f"[DEBUG] Searching for PDF using {strategy_name} strategy")
 
         try:
-            result = self.pdf_searcher.search_pdf(title, authors)
-            if result:
+            # Use strategy to discover URLs
+            urls = self.search_strategy.discover_urls(
+                metadata, query_text or "", response_data or {}
+            )
+
+            if urls:
+                # Return first discovered URL
+                result = urls[0]
                 if self.verbose:
-                    if self.pdf_searcher.download_pdfs:
+                    if self.pdf_searcher.download_pdfs and not result.startswith(
+                        ("http://", "https://")
+                    ):
                         print(f"[DEBUG] Downloaded PDF to: {result}")
                         # Track downloaded file for cleanup
                         self.downloaded_pdfs.append(result)
@@ -290,7 +310,36 @@ class DocumentProcessor:
                 metadata_text = self.bibtex_processor.format_metadata_for_prompt(
                     metadata
                 )
-                query_text = f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}"
+
+                # Let strategy modify the query if needed
+                modified_query_text, enable_google_search = (
+                    self.search_strategy.modify_query(
+                        f"I'm providing bibliographic metadata instead of the PDF file (file not available: {pdf_path}):\n\n{metadata_text}\n\nBased on this metadata, please answer: {query_info.text}",
+                        metadata or {},
+                    )
+                )
+
+                # Override google_search parameter if strategy suggests it
+                if enable_google_search and not query_info.params.get(
+                    "google_search", False
+                ):
+                    # Create a copy of params with google_search enabled
+                    modified_params = query_info.params.copy()
+                    modified_params["google_search"] = True
+                    # Create a temporary query config for this request
+                    from .config import QueryConfig
+
+                    temp_query_info = QueryConfig(
+                        text=modified_query_text,
+                        params=modified_params,
+                        structure=query_info.structure,
+                        filter_on=query_info.filter_on,
+                    )
+                    query_text = modified_query_text
+                    query_info = temp_query_info
+                else:
+                    query_text = modified_query_text
+
                 payload = self.api_client.create_text_payload(query_text)
 
             # Apply query parameters to payload
@@ -312,6 +361,31 @@ class DocumentProcessor:
                 response_content, grounding_metadata = self.api_client.extract_response(
                     response_data
                 )
+
+                # If using Google grounding strategy and no PDF found yet, try to discover URLs from grounding
+                if (
+                    not pdf_data
+                    and not is_url
+                    and not self.use_qwant_strategy
+                    and query_info.params.get("google_search", False)
+                    and grounding_metadata
+                ):
+                    discovered_urls = self.search_strategy.discover_urls(
+                        metadata or {}, query_text, response_data
+                    )
+
+                    if discovered_urls and not actual_path:
+                        # Use first discovered URL
+                        urls = [discovered_urls[0]]
+                        is_url = True
+                        pdf_source = "searched_url"
+                        document_data["file_path"] = discovered_urls[0]
+                        document_data["is_url"] = True
+                        document_data["pdf_source"] = pdf_source
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Using URL discovered from Google grounding: {discovered_urls[0]}"
+                            )
 
                 if self.verbose:
                     print(

@@ -36,6 +36,11 @@ def main(
         "--no-pdf-download",
         help="Disable automatic PDF downloading for missing files and use context url instead",
     ),
+    qwant: bool = typer.Option(
+        False,
+        "--qwant",
+        help="Use Qwant search strategy instead of Google grounding (default)",
+    ),
     save_state: Optional[Path] = typer.Option(
         None,
         "--save-state",
@@ -173,6 +178,12 @@ def main(
                 )
             if no_pdf_download:
                 console.print("[DEBUG] PDF download disabled", style="dim")
+            if qwant:
+                console.print("[DEBUG] Using Qwant search strategy", style="dim")
+            else:
+                console.print(
+                    "[DEBUG] Using Google grounding search strategy", style="dim"
+                )
 
         # Convert Path objects to strings for compatibility (files might be empty)
         file_paths = [str(f) for f in files] if files else []
@@ -191,11 +202,12 @@ def main(
                 if base_url:
                     config_overrides["base_url"] = base_url
 
-                # Pass no_pdf_download option to parent constructor
+                # Pass no_pdf_download option and qwant flag to parent constructor
                 auto_download_pdfs = not no_pdf_download
                 super().__init__(
                     verbose=verbose,
                     auto_download_pdfs=auto_download_pdfs,
+                    use_qwant_strategy=qwant,
                     **config_overrides,
                 )
 
