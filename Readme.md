@@ -33,7 +33,7 @@ ask-llm [OPTIONS] [PDF|BIB]...
 
 ## DESCRIPTION
 
-**ask-llm** analyzes PDF documents, BibTeX bibliographies, search on Semantic Scholar, and retrieves PDFs from the web. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Gemini LLM for text analysis and generation, Semantic Scholar integration for paper discovery, Google Search for grounding, Qwant for PDF retrieval.
+**ask-llm** analyzes PDF documents, BibTeX bibliographies, search on Semantic Scholar, and retrieves PDFs from the web. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Gemini LLM for text analysis and generation, Semantic Scholar integration for paper discovery, Google Search for grounding and PDF retrieval, Qwant for PDF retrieval.
 
 ### Things you can do with **ask-llm**
 
@@ -88,45 +88,35 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
  Process PDF files and BibTeX bibliographies using the Gemini API with structured output.
 
 
- Process PDF files and BibTeX bibliographies using the Gemini API with structured
- output.
-
-
-╭─ Arguments ─────────────────────────────────────────────────────────────────────╮
-│   files      [FILES]...  PDF files and/or BibTeX files to process (optional     │
-│                          when using Semantic Scholar)                           │
-│                          [default: None]                                        │
-╰─────────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ───────────────────────────────────────────────────────────────────────╮
-│ --no-clear                       Do not clear output files before processing    │
-│                                  (append mode)                                  │
-│ --no-pdf-download                Disable automatic PDF downloading for missing  │
-│                                  files and use context url instead                                          │
-│ --query-file               PATH  Override query file (default: query.md)        │
-│                                  [default: None]                                │
-│ --report                   PATH  Override report output file (default:          │
-│                                  analysis_report.json and analysis_report.csv)  │
-│                                  [default: None]                                │
-│ --log                      PATH  Override log output file (default: log.txt)    │
-│                                  [default: None]                                │
-│ --processed-list           PATH  Override processed files list output (default: │
-│                                  processed_files.txt)                           │
-│                                  [default: None]                                │
-│ --api-key                  TEXT  Override Gemini API key (default: from         │
-│                                  GEMINI_API_KEY env var)                        │
-│                                  [default: None]                                │
-│ --api-key-command          TEXT  Override command to retrieve API key (default: │
-│                                  rbw get gemini_key)                            │
-│                                  [default: None]                                │
-│ --base-url                 TEXT  Override Gemini API base URL (default:         │
-│                                  https://generativelanguage.googleapis.com/v1b… │
-│                                  [default: None]                                │
-│ --verbose          -v            Enable verbose debug output                    │
-│ --help                           Show this message and exit.                    │
-╰─────────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ──────────────────────────────────────────────────────────────────────╮
-│ version   Show version information.                                             │
-╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─ Arguments ────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│   files      [FILES]...  PDF files and/or BibTeX files to process (optional when using Semantic Scholar)       │
+│                          [default: None]                                                                       │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --no-clear                       Do not clear output files before processing (append mode)                     │
+│ --qwant                          Use Qwant search strategy instead of Google grounding (default)               │
+│ --load-state               PATH  Load and resume from saved state file [default: None]                         │
+│ --resume                         Resume from default state file (ask_llm_state.json)                           │
+│ --query-file               PATH  Override query file (default: query.md) [default: None]                       │
+│ --report                   PATH  Override report output file (default: analysis_report.json and                │
+│                                  analysis_report.csv)                                                          │
+│                                  [default: None]                                                               │
+│ --log                      PATH  Override log output file (default: log.txt) [default: None]                   │
+│ --processed-list           PATH  Override processed files list output (default: processed_files.txt)           │
+│                                  [default: None]                                                               │
+│ --api-key                  TEXT  Override Gemini API key (default: from GEMINI_API_KEY env var)                │
+│                                  [default: None]                                                               │
+│ --api-key-command          TEXT  Override command to retrieve API key (default: rbw get gemini_key)            │
+│                                  [default: None]                                                               │
+│ --base-url                 TEXT  Override Gemini API base URL (default:                                        │
+│                                  https://generativelanguage.googleapis.com/v1beta)                             │
+│                                  [default: None]                                                               │
+│ --verbose          -v            Enable verbose debug output                                                   │
+│ --help                           Show this message and exit.                                                   │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ version   Show version information.                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Quick Examples
