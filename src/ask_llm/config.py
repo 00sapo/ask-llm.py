@@ -192,6 +192,7 @@ class ConfigManager:
                         "open-access-pdf:",
                         "min-citation-count:",
                         "publication-date-or-year:",
+                        "year:",
                         "venue:",
                         "fields-of-study:",
                     ]
@@ -245,6 +246,7 @@ class ConfigManager:
                         "min_citation_count",
                         "publication_date_or_year",
                         "venue",
+                        "year",
                         "fields_of_study",
                     ]:
                         current_params[f"ss_{key}"] = (

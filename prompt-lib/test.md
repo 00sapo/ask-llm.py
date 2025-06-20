@@ -1,7 +1,6 @@
 semantic-scholar: true
-fields-of-study: Computer Science
 
-"A Music Information Retrieval system for structural queries"
+"Music listening as adaptive behaviour: Enaction meets neuroscience"
 
 ===
 model-name: gemini-2.5-flash-lite-preview-06-17
