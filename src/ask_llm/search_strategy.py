@@ -90,7 +90,10 @@ class GoogleGroundingStrategy(SearchStrategy):
 
             temp_query_config = QueryConfig(
                 text=search_query,
-                params={"google_search": True, "model": "gemini-2.5-flash"},
+                params={
+                    "google_search": True,
+                    "model": "gemini-2.5-flash-lite-preview-06-17",
+                },
             )
 
             response_data = self.api_client.make_request(payload, temp_query_config)
@@ -166,7 +169,10 @@ class GoogleGroundingStrategy(SearchStrategy):
 
                 relaxed_temp_query_config = QueryConfig(
                     text=relaxed_search_query,
-                    params={"google_search": True, "model": "gemini-2.5-flash"},
+                    params={
+                        "google_search": True,
+                        "model": "gemini-2.5-flash-lite-preview-06-17",
+                    },
                 )
 
                 relaxed_response_data = self.api_client.make_request(
@@ -248,7 +254,10 @@ class GoogleGroundingStrategy(SearchStrategy):
 
                 temp_query_config = QueryConfig(
                     text=search_query,
-                    params={"google_search": True, "model": "gemini-2.5-flash"},
+                    params={
+                        "google_search": True,
+                        "model": "gemini-2.5-flash-lite-preview-06-17",
+                    },
                 )
 
                 response_data = self.api_client.make_request(payload, temp_query_config)

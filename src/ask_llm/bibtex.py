@@ -145,13 +145,18 @@ class BibtexProcessor:
 
         return "\n".join(parts)
 
-    def update_bibtex_with_urls(
-        self, bibtex_file: str, url_mappings: Dict[str, str]
+    def update_bibtex_with_discovered_info(
+        self, bibtex_file: str, discovered_info: Dict[str, Dict[str, str]]
     ) -> int:
-        """Update BibTeX file with discovered PDF URLs and file paths"""
+        """Update BibTeX file with discovered PDF URLs and local file paths
+
+        Args:
+            bibtex_file: Path to BibTeX file to update
+            discovered_info: Dict mapping bibtex_key to {'url': url, 'file_path': path}
+        """
         if self.verbose:
             print(
-                f"[DEBUG] Updating BibTeX file {bibtex_file} with {len(url_mappings)} URLs/paths"
+                f"[DEBUG] Updating BibTeX file {bibtex_file} with URLs and file paths for {len(discovered_info)} entries"
             )
 
         try:
@@ -166,38 +171,39 @@ class BibtexProcessor:
             updated_count = 0
             for entry in bib_database.entries:
                 bibtex_key = entry.get("ID", "")
-                if bibtex_key in url_mappings:
-                    discovered_path = url_mappings[bibtex_key]
+                if bibtex_key in discovered_info:
+                    info = discovered_info[bibtex_key]
+                    discovered_url = info.get("url")
+                    discovered_file_path = info.get("file_path")
 
-                    # Determine if it's a URL or file path
-                    is_url = discovered_path.startswith(("http://", "https://"))
+                    # Add the URL to url field if we have one and it's not already present
+                    if discovered_url and (
+                        "url" not in entry or not entry["url"].strip()
+                    ):
+                        entry["url"] = discovered_url
+                        updated_count += 1
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Added URL to {bibtex_key}: {discovered_url}"
+                            )
 
-                    if is_url:
-                        # Always add to url field, even if already present (preserve original)
-                        if "url" not in entry or not entry["url"].strip():
-                            entry["url"] = discovered_path
+                    # Add the local file path to file field if we have one and it's not already present
+                    if discovered_file_path:
+                        if "file" not in entry or not entry["file"].strip():
+                            entry["file"] = discovered_file_path
                             updated_count += 1
                             if self.verbose:
                                 print(
-                                    f"[DEBUG] Added URL to {bibtex_key}: {discovered_path}"
+                                    f"[DEBUG] Added file path to {bibtex_key}: {discovered_file_path}"
                                 )
-
-                    # Always add file path to file field when available
-                    if "file" not in entry or not entry["file"].strip():
-                        entry["file"] = discovered_path
-                        updated_count += 1
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Added file path to {bibtex_key}: {discovered_path}"
-                            )
-                    elif discovered_path not in entry["file"]:
-                        # Append to existing file field if not already present
-                        entry["file"] = f"{entry['file']};{discovered_path}"
-                        updated_count += 1
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Appended file path to {bibtex_key}: {discovered_path}"
-                            )
+                        elif discovered_file_path not in entry["file"]:
+                            # Append to existing file field if not already present
+                            entry["file"] = f"{entry['file']};{discovered_file_path}"
+                            updated_count += 1
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Appended file path to {bibtex_key}: {discovered_file_path}"
+                                )
 
             # Convert author lists back to strings before writing
             for entry in bib_database.entries:
@@ -223,6 +229,20 @@ class BibtexProcessor:
         except Exception as e:
             print(f"Warning: Could not update BibTeX file {bibtex_file}: {e}")
             return 0
+
+    def update_bibtex_with_urls(
+        self, bibtex_file: str, url_mappings: Dict[str, str]
+    ) -> int:
+        """Update BibTeX file with discovered PDF URLs and file paths (legacy method)"""
+        # Convert simple url_mappings to new format
+        discovered_info = {}
+        for bibtex_key, path in url_mappings.items():
+            if path.startswith(("http://", "https://")):
+                discovered_info[bibtex_key] = {"url": path}
+            else:
+                discovered_info[bibtex_key] = {"file_path": path}
+
+        return self.update_bibtex_with_discovered_info(bibtex_file, discovered_info)
 
     def extract_pdfs_from_bibtex(self, bibtex_file: str) -> List[Dict[str, Any]]:
         """Extract PDF paths and URLs from BibTeX file"""

@@ -199,24 +199,33 @@ class DocumentAnalyzer:
 
         return False
 
-    def _track_discovered_url(self, bibtex_key: str, discovered_urls: dict):
+    def _track_discovered_info(self, bibtex_key: str, discovered_info: dict):
         """Track discovered URLs and file paths for later BibTeX update"""
         # Check if we discovered a URL or file path for this document
         for doc in self.report_manager.results["documents"]:
             if doc["bibtex_key"] == bibtex_key:
-                # Always track file paths if available
-                if doc.get("file_path"):
-                    discovered_urls[bibtex_key] = doc["file_path"]
+                pdf_url = doc.get("pdf_url")
+                file_path = doc.get("file_path")
+
+                # Track both URL and file path if available
+                info = {}
+                if pdf_url:
+                    info["url"] = pdf_url
+                if (
+                    file_path and file_path != pdf_url
+                ):  # Only add file path if different from URL
+                    info["file_path"] = file_path
+
+                if info:  # Only track if we have either URL or file path
+                    discovered_info[bibtex_key] = info
                     if self.verbose:
+                        tracked_items = []
+                        if pdf_url:
+                            tracked_items.append(f"URL: {pdf_url}")
+                        if file_path and file_path != pdf_url:
+                            tracked_items.append(f"file path: {file_path}")
                         print(
-                            f"[DEBUG] Tracked file path for {bibtex_key}: {doc['file_path']}"
-                        )
-                # Also track original URL if different from file path
-                elif doc.get("pdf_url") and doc["pdf_url"] != doc.get("file_path"):
-                    discovered_urls[bibtex_key] = doc["pdf_url"]
-                    if self.verbose:
-                        print(
-                            f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['pdf_url']}"
+                            f"[DEBUG] Tracked for {bibtex_key}: {', '.join(tracked_items)}"
                         )
                 break
 
@@ -321,8 +330,8 @@ class DocumentAnalyzer:
         if self.verbose:
             print(f"[DEBUG] Starting file processing for {len(files)} files")
 
-        # Track discovered URLs for updating BibTeX files
-        discovered_urls = {}  # bibtex_key -> url mapping
+        # Track discovered URLs and file paths for updating BibTeX files
+        discovered_info = {}  # bibtex_key -> {'url': url, 'file_path': path} mapping
         bibtex_files_to_update = []  # Files that should be updated
 
         try:
@@ -413,8 +422,8 @@ class DocumentAnalyzer:
                                     "semanticscholar"
                                 )
                             ):
-                                self._track_discovered_url(
-                                    mapping["bibtex_key"], discovered_urls
+                                self._track_discovered_info(
+                                    mapping["bibtex_key"], discovered_info
                                 )
 
                         # Mark original bibtex file for updating (not the temporary merged file)
@@ -447,8 +456,8 @@ class DocumentAnalyzer:
 
                         # Track discovered URLs for Semantic Scholar entries too
                         if success and mapping["bibtex_key"]:
-                            self._track_discovered_url(
-                                mapping["bibtex_key"], discovered_urls
+                            self._track_discovered_info(
+                                mapping["bibtex_key"], discovered_info
                             )
 
                     # Mark semantic scholar file for updating
@@ -476,8 +485,8 @@ class DocumentAnalyzer:
 
                         # Track discovered URLs
                         if success and mapping["bibtex_key"]:
-                            self._track_discovered_url(
-                                mapping["bibtex_key"], discovered_urls
+                            self._track_discovered_info(
+                                mapping["bibtex_key"], discovered_info
                             )
 
                     # Mark bibtex file for updating
@@ -489,23 +498,25 @@ class DocumentAnalyzer:
                     print(f"[DEBUG] Processing individual PDF: {pdf_file}")
                 self.process_pdf(pdf_file)
 
-            # Update BibTeX files with discovered URLs
-            if discovered_urls and bibtex_files_to_update:
+            # Update BibTeX files with discovered URLs and file paths
+            if discovered_info and bibtex_files_to_update:
                 print(
-                    f"\nUpdating BibTeX files with {len(discovered_urls)} discovered URLs..."
+                    f"\nUpdating BibTeX files with URLs and file paths for {len(discovered_info)} entries..."
                 )
 
                 total_updated = 0
                 for bibtex_file in set(bibtex_files_to_update):  # Remove duplicates
                     if os.path.exists(bibtex_file):
-                        updated_count = self.bibtex_processor.update_bibtex_with_urls(
-                            bibtex_file, discovered_urls
+                        updated_count = (
+                            self.bibtex_processor.update_bibtex_with_discovered_info(
+                                bibtex_file, discovered_info
+                            )
                         )
                         total_updated += updated_count
 
                 if total_updated > 0:
                     print(
-                        f"✅ Updated {total_updated} BibTeX entries with discovered URLs"
+                        f"✅ Updated {total_updated} BibTeX entries with discovered URLs and file paths"
                     )
 
             # Update filtered out count in metadata
