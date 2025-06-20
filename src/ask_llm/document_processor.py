@@ -43,6 +43,28 @@ class DocumentProcessor:
             if self.verbose:
                 print("[DEBUG] Using Google grounding search strategy")
 
+    def _is_url(self, path: str) -> bool:
+        """Check if the given path is a URL"""
+        return path and (path.startswith("http://") or path.startswith("https://"))
+
+    def _download_pdf_from_url(self, url: str, title: str = "downloaded_pdf") -> str:
+        """Download PDF from URL and return local path"""
+        if self.verbose:
+            print(f"[DEBUG] Downloading PDF from URL: {url}")
+
+        downloaded_path = self.pdf_downloader.download_pdf(url, title)
+        if downloaded_path:
+            self.downloaded_pdfs.append(downloaded_path)
+            if self.verbose:
+                print(f"[DEBUG] Successfully downloaded PDF to: {downloaded_path}")
+            print(f"📥 Downloaded PDF from URL: {url}")
+            return downloaded_path
+        else:
+            if self.verbose:
+                print(f"[DEBUG] Failed to download PDF from URL: {url}")
+            print(f"❌ Failed to download PDF from URL: {url}")
+            return None
+
     def _find_pdf_file(self, pdf_path, bibtex_dir=None):
         """Find PDF file in common locations if not found at given path"""
         if self.verbose:
@@ -173,15 +195,28 @@ class DocumentProcessor:
         pdf_source = "unknown"
         pdf_url = None  # Track original URL for downloaded PDFs
 
-        # Try to find PDF file first
+        # Check if pdf_path is a URL and handle accordingly
         if pdf_path:
-            actual_path = self._find_pdf_file(
-                pdf_path,
-                os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
-            )
+            if self._is_url(pdf_path):
+                # If it's a URL, download it directly
+                if self.verbose:
+                    print(f"[DEBUG] Detected URL, downloading: {pdf_path}")
+
+                title = bibtex_key or "downloaded_pdf"
+                actual_path = self._download_pdf_from_url(pdf_path, title)
+                if actual_path:
+                    pdf_url = pdf_path  # Store original URL
+                    pdf_source = "url_download"
+                # else, if actual_path is still not set, let's search for it (see below)
+            else:
+                # It's a local file path, try to find it
+                actual_path = self._find_pdf_file(
+                    pdf_path,
+                    os.path.dirname(bibtex_file_path) if bibtex_file_path else None,
+                )
 
         if actual_path:
-            # Process local PDF
+            # Process local PDF (either originally local or downloaded from URL)
             try:
                 with open(actual_path, "rb") as f:
                     pdf_data = f.read()
@@ -193,12 +228,13 @@ class DocumentProcessor:
                             print(
                                 f"[DEBUG] Encoded PDF to base64: {len(encoded_pdf)} characters"
                             )
-                        pdf_source = "local_file"
+                        if pdf_source == "unknown":
+                            pdf_source = "local_file"
             except Exception as e:
                 print(f"Error reading PDF {actual_path}: {e}", file=sys.stderr)
                 return None, False
         else:
-            # PDF not found locally - try to search for it and download or use metadata
+            # PDF not found locally and not a URL - try to search for it and download or use metadata
             if entry_text and bibtex_key:
                 metadata = self.bibtex_processor.extract_metadata(
                     entry_text, bibtex_key

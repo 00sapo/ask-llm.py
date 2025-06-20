@@ -262,8 +262,6 @@ class BibtexProcessor:
                         "pdf_path": url,  # Now contains URL or PDF path
                         "bibtex_key": bibtex_key,
                         "entry_text": entry_text,
-                        "is_url": url
-                        and (url.startswith("http://") or url.startswith("https://")),
                         "metadata": metadata,  # Add pre-extracted metadata
                     }
                 )
@@ -371,8 +369,6 @@ class BibtexProcessor:
                     "pdf_path": url,
                     "bibtex_key": bibtex_key,
                     "entry_text": full_entry,
-                    "is_url": url
-                    and (url.startswith("http://") or url.startswith("https://")),
                 }
             )
 
