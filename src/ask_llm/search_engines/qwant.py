@@ -61,9 +61,11 @@ class QwantEngine(SearchEngine):
             first_author = ""
 
         if strict:
-            search_query = f'"{title}" {first_author} filetype:pdf'
+            search_query = (
+                f'"{title}" {first_author} filetype:pdf -researchgate.net -jstor.org'
+            )
         else:
-            search_query = f"{title} {first_author} filetype:pdf".strip()
+            search_query = f"{title} {first_author} filetype:pdf -researchgate.net -jstor.org".strip()
 
         if self.verbose:
             query_type = "strict" if strict else "relaxed"
