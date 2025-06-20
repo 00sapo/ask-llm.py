@@ -571,37 +571,56 @@ def fulltext(
                 file_downloaded = 0
 
                 # Process each entry
-                for mapping in pdf_mappings:
+                for entry_idx, mapping in enumerate(pdf_mappings, 1):
                     bibtex_key = mapping.get("bibtex_key", "")
                     pdf_path = mapping.get("pdf_path")
                     metadata = mapping.get("metadata", {})
 
                     if not bibtex_key:
-                        if verbose:
-                            console.print(
-                                "[DEBUG] Skipping entry with no BibTeX key", style="dim"
-                            )
+                        console.print(
+                            f"⚠️  Entry {entry_idx}/{len(pdf_mappings)}: Skipping entry with no BibTeX key",
+                            style="yellow",
+                        )
                         continue
 
                     title = metadata.get("title", "")
+                    authors = metadata.get("author", "")
+
+                    # Always show which entry we're processing
+                    console.print(
+                        f"\n📄 Entry {entry_idx}/{len(pdf_mappings)}: {bibtex_key}"
+                    )
+                    if title:
+                        console.print(
+                            f"   Title: {title[:80]}{'...' if len(title) > 80 else ''}"
+                        )
+                    if authors:
+                        console.print(
+                            f"   Authors: {authors[:60]}{'...' if len(authors) > 60 else ''}"
+                        )
+
                     if verbose:
                         console.print(
                             f"[DEBUG] Processing entry: {bibtex_key}", style="dim"
                         )
                         if title:
-                            console.print(
-                                f"[DEBUG] Title: {title[:100]}...", style="dim"
-                            )
+                            console.print(f"[DEBUG] Full title: {title}", style="dim")
 
                     # Skip if entry already has a local PDF file that exists
                     if pdf_path and not pdf_path.startswith(("http://", "https://")):
                         if os.path.exists(pdf_path):
+                            console.print(
+                                f"   ℹ️  Already has local PDF: {pdf_path}", style="blue"
+                            )
                             if verbose:
                                 console.print(
                                     f"[DEBUG] {bibtex_key} already has local PDF: {pdf_path}",
                                     style="dim",
                                 )
                             continue
+
+                    # Show search progress
+                    console.print("   🔍 Searching for PDF...")
 
                     # Search for PDF using the fallback strategy
                     try:
@@ -615,7 +634,11 @@ def fulltext(
                             file_downloaded += 1
 
                             console.print(
-                                f"✅ {bibtex_key}: Downloaded PDF from {original_url}"
+                                "   ✅ PDF found and downloaded!", style="green"
+                            )
+                            console.print(f"      Source: {original_url}", style="dim")
+                            console.print(
+                                f"      Saved to: {downloaded_path}", style="dim"
                             )
 
                             # Track for BibTeX update
@@ -634,15 +657,16 @@ def fulltext(
                                     style="dim",
                                 )
                         else:
+                            console.print("   ❌ No PDF found", style="red")
                             if verbose:
                                 console.print(
-                                    f"[DEBUG] {bibtex_key}: No PDF found", style="dim"
+                                    f"[DEBUG] {bibtex_key}: No PDF found after trying both Google grounding and Qwant search",
+                                    style="dim",
                                 )
-                            console.print(f"❌ {bibtex_key}: No PDF found")
 
                     except Exception as e:
                         console.print(
-                            f"❌ {bibtex_key}: Error searching for PDF: {e}",
+                            f"   ❌ Error during search: {e}",
                             style="red",
                         )
                         if verbose:
