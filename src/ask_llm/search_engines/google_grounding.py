@@ -77,7 +77,7 @@ class GoogleGroundingEngine(SearchEngine):
         else:
             suggested_query = f"{title} {first_author} filetype:pdf -site:jstor.org -site:researchgate.net".strip()
 
-        search_query += f"\n\nSuggested query: `{suggested_query}`"
+        search_query += f"\nYou MUST use the following query: `{suggested_query}`"
         return search_query
 
     def _extract_urls_from_response(self, response_data: dict) -> List[str]:
