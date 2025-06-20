@@ -19,8 +19,8 @@ app = typer.Typer(
 console = Console()
 
 
-@app.callback(invoke_without_command=True)
-def main(
+@app.command()
+def process(
     ctx: typer.Context,
     files: List[Path] = typer.Argument(
         None,
@@ -177,7 +177,8 @@ def main(
                 "[DEBUG] State saving enabled (ask_llm_state.json)", style="dim"
             )
             console.print(
-                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)", style="dim"
+                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)",
+                style="dim",
             )
 
         # Convert Path objects to strings for compatibility (files might be empty)
@@ -450,6 +451,84 @@ def main(
 def version():
     """Show version information."""
     console.print("ask-llm version 1.0.0", style="bold blue")
+
+
+@app.command()
+def clean():
+    """Clean up all generated files, caches, and downloads."""
+    import shutil
+    import glob
+
+    files_to_remove = []
+    dirs_to_remove = []
+
+    # Generated files
+    generated_files = [
+        "analysis_report.json",
+        "analysis_report.csv",
+        "log.txt",
+        "processed_files.txt",
+        "filtered_out_documents.txt",
+        "ask_llm_state.json",
+        "semantic_scholar.bib",
+    ]
+
+    # Find merged BibTeX files
+    merged_bibtex = glob.glob("merged_*.bib")
+
+    # Cache databases
+    cache_files = [
+        "gemini_api_cache.sqlite",
+        "pdf_download_cache.sqlite",
+        "semantic_scholar_cache.sqlite",
+        "qwant_search_cache.sqlite",
+        "url_resolver_cache.sqlite",
+    ]
+
+    # Downloads directory
+    downloads_dir = "ask_llm_downloads"
+
+    # Collect all files to remove
+    files_to_remove.extend(generated_files)
+    files_to_remove.extend(merged_bibtex)
+    files_to_remove.extend(cache_files)
+
+    if os.path.exists(downloads_dir):
+        dirs_to_remove.append(downloads_dir)
+
+    removed_files = 0
+    removed_dirs = 0
+
+    # Remove files
+    for file_path in files_to_remove:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                console.print(f"🗑️  Removed: {file_path}", style="dim")
+                removed_files += 1
+            except Exception as e:
+                console.print(f"❌ Failed to remove {file_path}: {e}", style="red")
+
+    # Remove directories
+    for dir_path in dirs_to_remove:
+        if os.path.exists(dir_path):
+            try:
+                shutil.rmtree(dir_path)
+                console.print(f"🗑️  Removed directory: {dir_path}", style="dim")
+                removed_dirs += 1
+            except Exception as e:
+                console.print(
+                    f"❌ Failed to remove directory {dir_path}: {e}", style="red"
+                )
+
+    # Summary
+    if removed_files > 0 or removed_dirs > 0:
+        console.print(
+            f"✅ Cleanup complete: removed {removed_files} files and {removed_dirs} directories",
+            style="bold green",
+        )
+    else:
+        console.print("ℹ️  No files to clean up", style="bold blue")
 
 
 if __name__ == "__main__":
