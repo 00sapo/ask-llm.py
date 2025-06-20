@@ -39,6 +39,8 @@ class BibtexProcessor:
             "abstract",
             "journal",
             "booktitle",
+            "citationcount",
+            "influentialcitationcount",
         ]
         for field in fields_to_extract:
             if field in entry:
@@ -126,6 +128,31 @@ class BibtexProcessor:
         text = re.sub(r"\s+", " ", text).strip()
 
         return text
+
+    def _extract_citation_counts(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract citation counts from citation fields"""
+        result = metadata.copy()
+
+        # Convert citationcount field to citation_count
+        if "citationcount" in metadata and metadata["citationcount"]:
+            try:
+                result["citation_count"] = int(metadata["citationcount"])
+            except (ValueError, TypeError):
+                pass
+
+        # Convert influentialcitationcount field to influential_citation_count
+        if (
+            "influentialcitationcount" in metadata
+            and metadata["influentialcitationcount"]
+        ):
+            try:
+                result["influential_citation_count"] = int(
+                    metadata["influentialcitationcount"]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        return result
 
     def format_metadata_for_prompt(self, metadata: Dict[str, Any]) -> str:
         """Format metadata for inclusion in prompt"""

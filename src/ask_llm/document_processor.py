@@ -230,6 +230,8 @@ class DocumentProcessor:
                 metadata = self.bibtex_processor.extract_metadata(
                     entry_text, bibtex_key
                 )
+                # Extract citation counts if present
+                metadata = self.bibtex_processor._extract_citation_counts(metadata)
 
                 # Try to search for PDF using metadata
                 search_result, original_url = self._search_for_pdf(metadata)

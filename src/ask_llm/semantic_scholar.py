@@ -159,10 +159,17 @@ class SemanticScholarClient:
         if url:
             bibtex_lines.append(f"  url = {{{url}}},")
 
-        # Add citation count if available
+        # Add citation counts if available
         citation_count = paper.get("citationCount")
+        influential_citation_count = paper.get("influentialCitationCount")
+
         if citation_count is not None:
-            bibtex_lines.append(f"  note = {{Citations: {citation_count}}},")
+            bibtex_lines.append(f"  citationcount = {{{citation_count}}},")
+
+        if influential_citation_count is not None:
+            bibtex_lines.append(
+                f"  influentialcitationcount = {{{influential_citation_count}}},"
+            )
 
         # Add Semantic Scholar source note
         bibtex_lines.append("  keywords = {Semantic Scholar},")

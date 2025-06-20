@@ -38,24 +38,32 @@ class ReportManager:
     def add_document(self, document_data):
         """Add a document to the results"""
 
-        # Extract title and authors from BibTeX metadata if available
+        # Extract title, authors, and citation info from BibTeX metadata if available
         title = ""
         authors = ""
+        citation_count = None
+        influential_citation_count = None
 
         # Get BibTeX metadata from document_data if it was stored during processing
         bibtex_metadata = document_data.get("bibtex_metadata", {})
         if bibtex_metadata:
             title = bibtex_metadata.get("title", "")
             authors = bibtex_metadata.get("author", "")
+            citation_count = bibtex_metadata.get("citation_count")
+            influential_citation_count = bibtex_metadata.get(
+                "influential_citation_count"
+            )
 
-        # Add title, authors, and Google Scholar link to document data
+        # Add title, authors, citation info, and Google Scholar link to document data
         document_data["title"] = title
         document_data["authors"] = authors
+        document_data["citation_count"] = citation_count
+        document_data["influential_citation_count"] = influential_citation_count
         document_data["google_scholar_link"] = self.generate_google_scholar_link(
             title, authors
         )
 
-        # Generate and display Google Scholar link
+        # Generate and display Google Scholar link and citation info
         if document_data["google_scholar_link"]:
             search_query = title
             if authors:
@@ -66,6 +74,12 @@ class ReportManager:
                     search_query += f" {first_author_last}"
             print(f"🔗 Google Scholar link: {document_data['google_scholar_link']}")
             print(f"🔍 Search query: {search_query}")
+
+        # Display citation information if available
+        if citation_count is not None:
+            print(f"📊 Citations: {citation_count}")
+        if influential_citation_count is not None:
+            print(f"🌟 Influential citations: {influential_citation_count}")
 
         self.results["documents"].append(document_data)
         self.results["metadata"]["total_documents"] += 1
@@ -150,6 +164,8 @@ class ReportManager:
             "BibTeX Key",
             "Title",
             "Authors",
+            "Citation Count",
+            "Influential Citation Count",
             "Google Scholar Link",
             "File Path",
             "Metadata Only",
@@ -224,6 +240,8 @@ class ReportManager:
                     doc["bibtex_key"],
                     doc.get("title", ""),
                     doc.get("authors", ""),
+                    doc.get("citation_count", ""),
+                    doc.get("influential_citation_count", ""),
                     doc.get("google_scholar_link", ""),
                     doc["file_path"],
                     "Yes" if doc["is_metadata_only"] else "No",
