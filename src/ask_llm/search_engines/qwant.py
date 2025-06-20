@@ -32,20 +32,14 @@ class QwantEngine(SearchEngine):
                 print("[DEBUG] No title provided for PDF search")
             return []
 
-        # Clean title and authors for search
-        clean_title = self._clean_search_term(title)
-        clean_authors = self._clean_search_term(authors) if authors else ""
-
         # Try strict search first
-        pdf_urls = self._search_pdfs_with_query(clean_title, clean_authors, strict=True)
+        pdf_urls = self._search_pdfs_with_query(title, authors, strict=True)
 
         # If no results, try relaxed search
         if not pdf_urls:
             if self.verbose:
                 print("[DEBUG] No PDF found with strict search, trying relaxed query")
-            pdf_urls = self._search_pdfs_with_query(
-                clean_title, clean_authors, strict=False
-            )
+            pdf_urls = self._search_pdfs_with_query(title, authors, strict=False)
 
         return pdf_urls
 
@@ -203,61 +197,12 @@ class QwantEngine(SearchEngine):
         # Look for direct PDF URLs
         for result in web_results:
             url_result = result.get("url", "")
-            if url_result.lower().endswith(".pdf"):
+            if url_result:
                 if self.verbose:
-                    print(f"[DEBUG] Found direct PDF link: {url_result}")
+                    print(f"[DEBUG] Found link: {url_result}")
                 urls.append(url_result)
 
-        # If no direct PDFs found, look for pages that might contain PDFs
-        if not urls:
-            for result in web_results:
-                url_result = result.get("url", "")
-                title = result.get("title", "").lower()
-                desc = result.get("desc", "").lower()
-
-                if "pdf" in title or "pdf" in desc:
-                    page_pdf_url = self._extract_pdf_from_page(url_result)
-                    if page_pdf_url:
-                        urls.append(page_pdf_url)
-
         return urls
-
-    def _extract_pdf_from_page(self, page_url: str) -> Optional[str]:
-        """Try to extract PDF URL from a webpage"""
-        try:
-            if self.verbose:
-                print(f"[DEBUG] Checking page for PDF links: {page_url}")
-
-            response = self.session.get(page_url, timeout=10)
-
-            if self.verbose and hasattr(response, "from_cache"):
-                cache_status = "from cache" if response.from_cache else "fresh request"
-                print(f"[DEBUG] Page request: {cache_status}")
-
-            response.raise_for_status()
-
-            # Look for PDF links in the HTML
-            pdf_links = re.findall(
-                r'href=["\']([^"\']*\.pdf[^"\']*)["\']', response.text, re.IGNORECASE
-            )
-
-            for link in pdf_links:
-                # Convert relative URLs to absolute
-                if link.startswith("/"):
-                    link = urljoin(page_url, link)
-                elif not link.startswith("http"):
-                    continue
-
-                if self.verbose:
-                    print(f"[DEBUG] Found PDF link on page: {link}")
-                return link
-
-            return None
-
-        except Exception as e:
-            if self.verbose:
-                print(f"[DEBUG] Error extracting PDF from page {page_url}: {e}")
-            return None
 
     def _clean_search_term(self, text: str) -> str:
         """Clean text for search query"""

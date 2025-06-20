@@ -75,7 +75,7 @@ class GoogleGroundingEngine(SearchEngine):
         if strict:
             suggested_query = f'intitle:"{title}" {first_author}  filetype:pdf -site:jstor.org -site:researchgate.net'
         else:
-            suggested_query = f"{title} {first_author if first_author else ''} filetype:pdf -site:jstor.org -site:researchgate.net".strip()
+            suggested_query = f"{title} {first_author} filetype:pdf -site:jstor.org -site:researchgate.net".strip()
 
         search_query += f"\n\nSuggested query: `{suggested_query}`"
         return search_query
