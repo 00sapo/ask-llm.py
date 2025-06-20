@@ -47,6 +47,20 @@ ask-llm [OPTIONS] [PDF|BIB]...
 - use the output of queries (i.e. JSON output) as input to further queries
 - use the output JSON to build a discursive report/paper
 
+### Some data
+
+In my experiments (see `prompt-lib/` for examples), I found the following:
+
+- 90% of the papers successfully found a PDF online; of these, only 11% had certainty ≤0.8,
+indicating a possibly wrong PDF.
+- Gemini-2.5-pro had the following distribution of certainty (even if the PDF was wrong and only the
+metadata were used)
+   ![Histogram of
+certainty](https://raw.githubusercontent.com/ask-llm/ask-llm/main/chart.png)
+- Semantic Scholar retrieved 446 items, of which 39% were excluded by the gemini filter-on criteria
+- On average, 35 seconds per paper were spent on the analysis (including the time to retrieve the
+PDF) using a 500 Mbps connection.
+  
 ---
 
 ## INSTALLATION
