@@ -223,13 +223,9 @@ class BibtexProcessor:
                 if self.verbose:
                     print(f"[DEBUG] Processing BibTeX entry: {bibtex_key}")
 
-                # Look for URL first (either in url field or file field)
+                # Look for local file first
                 url = None
-                if "url" in entry:
-                    url = entry["url"]
-                    if self.verbose:
-                        print(f"[DEBUG] Found URL: {url} for key {bibtex_key}")
-                elif "file" in entry:
+                if "file" in entry:
                     file_field = entry["file"]
                     # Check if file field contains a URL (http/https)
                     url_match = re.search(r"(https?://[^\s;:]+)", file_field)
@@ -250,6 +246,10 @@ class BibtexProcessor:
                                 )
                             # Use PDF path as URL for local files
                             url = pdf_path
+                elif "url" in entry:
+                    url = entry["url"]
+                    if self.verbose:
+                        print(f"[DEBUG] Found URL: {url} for key {bibtex_key}")
 
                 # Extract metadata directly from parsed entry
                 metadata = self._extract_metadata_from_entry(entry)

@@ -328,7 +328,6 @@ def main(
             def process_files_with_state_saving(self, file_paths):
                 """Process files with automatic state saving"""
                 state_file = "ask_llm_state.json"
-                error_state_file = "ask_llm_state_error.json"
 
                 # Save initial state before processing
                 try:
@@ -355,7 +354,7 @@ def main(
                     try:
                         self.save_state(state_file)
                         console.print(
-                            "💾 Final state saved to: ask_llm_state.json",
+                            f"💾 Final state saved to: {state_file}",
                             style="bold blue",
                         )
                     except Exception as e:
@@ -366,9 +365,9 @@ def main(
                 except KeyboardInterrupt:
                     # Save state on user interruption
                     try:
-                        self.save_state(error_state_file)
+                        self.save_state(state_file)
                         console.print(
-                            f"💾 Interrupted state saved to: {error_state_file}",
+                            f"💾 Interrupted state saved to: {state_file}",
                             style="bold yellow",
                         )
                     except Exception as e:
@@ -381,9 +380,9 @@ def main(
                 except Exception:
                     # Save state even on error for recovery
                     try:
-                        self.save_state(error_state_file)
+                        self.save_state(state_file)
                         console.print(
-                            f"💾 Error state saved to: {error_state_file}",
+                            f"💾 Error state saved to: {state_file}",
                             style="bold yellow",
                         )
                     except Exception as save_error:
