@@ -55,8 +55,7 @@ In my experiments (see `prompt-lib/` for examples), I found the following:
 indicating a possibly wrong PDF.
 - Gemini-2.5-pro had the following distribution of certainty (even if the PDF was wrong and only the
 metadata were used)
-   ![Histogram of
-certainty](https://raw.githubusercontent.com/ask-llm/ask-llm/main/chart.png)
+![Histogram of certainty](https://github.com/00sapo/ask-llm.py/blob/master/chart.png?raw=true)
 - Semantic Scholar retrieved 446 items, of which 39% were excluded by the gemini filter-on criteria
 - On average, 35 seconds per paper were spent on the analysis (including the time to retrieve the
 PDF) using a 500 Mbps connection.
