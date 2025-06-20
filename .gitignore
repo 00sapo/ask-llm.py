@@ -29,3 +29,5 @@ ask_llm_state_error.json
 filtered_out_documents.txt
 similarity.ods
 .~lock.similarity.ods#
+src/ask_llm/search_engines/__pycache__
+qwant_search_cache.sqlite
