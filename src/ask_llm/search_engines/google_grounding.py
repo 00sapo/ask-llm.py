@@ -12,10 +12,6 @@ class GoogleGroundingEngine(SearchEngine):
         super().__init__(verbose)
         self.api_client = api_client
 
-    def search(self, query: str) -> List[str]:
-        """Basic search - not implemented for Google Grounding"""
-        return []
-
     def search_pdfs(self, title: str, authors: str = "") -> List[str]:
         """Search for PDFs using Google grounding"""
         if not title:
@@ -55,7 +51,7 @@ class GoogleGroundingEngine(SearchEngine):
                 text=search_query,
                 params={
                     "google_search": True,
-                    "model": "gemini-2.5-flash-lite-preview-06-17",
+                    "model": "gemini-2.5-flash",
                 },
             )
 

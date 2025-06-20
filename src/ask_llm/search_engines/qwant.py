@@ -25,10 +25,6 @@ class QwantEngine(SearchEngine):
         if self.verbose:
             print("[DEBUG] Initialized Qwant search engine with requests_cache")
 
-    def search(self, query: str) -> List[str]:
-        """Basic search using Qwant"""
-        return self._search_qwant_urls(query)
-
     def search_pdfs(self, title: str, authors: str = "") -> List[str]:
         """Search for PDFs using Qwant"""
         if not title.strip():

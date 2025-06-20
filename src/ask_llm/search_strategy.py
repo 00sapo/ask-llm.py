@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 
 from .pdf_finder import PDFFinder
 from .search_engines import GoogleGroundingEngine, QwantEngine
@@ -22,13 +22,6 @@ class SearchStrategy(ABC):
         self.verbose = verbose
 
     @abstractmethod
-    def discover_urls(
-        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
-    ) -> List[str]:
-        """Discover PDF URLs for a document. Returns list of discovered URLs."""
-        pass
-
-    @abstractmethod
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
     ) -> Optional[tuple]:
@@ -41,40 +34,12 @@ class FallbackSearchStrategy(SearchStrategy):
 
     def __init__(self, api_client, url_resolver, pdf_downloader, verbose=False):
         super().__init__(verbose)
-        
+
         # Initialize both strategies
         self.google_strategy = GoogleGroundingStrategy(
             api_client, url_resolver, pdf_downloader, verbose=verbose
         )
-        self.qwant_strategy = QwantSearchStrategy(
-            pdf_downloader, verbose=verbose
-        )
-
-    def discover_urls(
-        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
-    ) -> List[str]:
-        """Try Google grounding first, then fall back to Qwant search"""
-        if self.verbose:
-            print("[DEBUG] Trying Google grounding strategy first")
-        
-        # Try Google grounding first
-        urls = self.google_strategy.discover_urls(metadata, query_text, response_data)
-        
-        if urls:
-            if self.verbose:
-                print(f"[DEBUG] Google grounding found {len(urls)} URLs")
-            return urls
-        
-        # Fall back to Qwant search
-        if self.verbose:
-            print("[DEBUG] Google grounding found no results, falling back to Qwant")
-        
-        urls = self.qwant_strategy.discover_urls(metadata, query_text, response_data)
-        
-        if self.verbose:
-            print(f"[DEBUG] Qwant search found {len(urls)} URLs")
-        
-        return urls
+        self.qwant_strategy = QwantSearchStrategy(pdf_downloader, verbose=verbose)
 
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
@@ -82,24 +47,28 @@ class FallbackSearchStrategy(SearchStrategy):
         """Try Google grounding first, then fall back to Qwant search"""
         if self.verbose:
             print("[DEBUG] Trying Google grounding strategy first")
-        
+
         # Try Google grounding first
-        result = self.google_strategy.discover_urls_with_source(metadata, query_text, response_data)
-        
+        result = self.google_strategy.discover_urls_with_source(
+            metadata, query_text, response_data
+        )
+
         if result:
             if self.verbose:
                 print("[DEBUG] Google grounding found PDF")
             return result
-        
+
         # Fall back to Qwant search
         if self.verbose:
             print("[DEBUG] Google grounding found no results, falling back to Qwant")
-        
-        result = self.qwant_strategy.discover_urls_with_source(metadata, query_text, response_data)
-        
+
+        result = self.qwant_strategy.discover_urls_with_source(
+            metadata, query_text, response_data
+        )
+
         if self.verbose and result:
             print("[DEBUG] Qwant search found PDF")
-        
+
         return result
 
 
@@ -112,12 +81,6 @@ class GoogleGroundingStrategy(SearchStrategy):
         self.pdf_finder = PDFFinder(
             self.search_engine, url_resolver, pdf_downloader, verbose=verbose
         )
-
-    def discover_urls(
-        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
-    ) -> List[str]:
-        """Make an LLM query to search for PDF URLs using Google grounding"""
-        return self.pdf_finder.find_pdfs(metadata)
 
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
@@ -137,12 +100,6 @@ class QwantSearchStrategy(SearchStrategy):
         self.pdf_finder = PDFFinder(
             self.search_engine, self.url_resolver, pdf_downloader, verbose=verbose
         )
-
-    def discover_urls(
-        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
-    ) -> List[str]:
-        """Use Qwant search to discover and download PDFs"""
-        return self.pdf_finder.find_pdfs(metadata)
 
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]

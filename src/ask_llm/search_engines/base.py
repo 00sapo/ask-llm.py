@@ -11,11 +11,6 @@ class SearchEngine(ABC):
         self.verbose = verbose
 
     @abstractmethod
-    def search(self, query: str) -> List[str]:
-        """Search for URLs matching the query"""
-        pass
-
-    @abstractmethod
     def search_pdfs(self, title: str, authors: str = "") -> List[str]:
         """Search specifically for PDF URLs"""
         pass
