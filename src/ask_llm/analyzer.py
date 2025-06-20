@@ -18,11 +18,9 @@ class DocumentAnalyzer:
     def __init__(
         self,
         verbose=False,
-        use_qwant_strategy=False,
         **config_overrides,
     ):
         self.verbose = verbose
-        self.use_qwant_strategy = use_qwant_strategy
 
         # Initialize core components with config overrides
         self.config = ConfigManager(verbose=verbose, **config_overrides)
@@ -34,13 +32,12 @@ class DocumentAnalyzer:
         self.semantic_scholar_client = SemanticScholarClient(verbose=verbose)
         self.pdf_downloader = PDFDownloader(verbose=verbose)
 
-        # Initialize processors with strategy choice
+        # Initialize processors with fallback strategy
         self.document_processor = DocumentProcessor(
             self.api_client,
             self.bibtex_processor,
             self.pdf_downloader,
             verbose=verbose,
-            use_qwant_strategy=use_qwant_strategy,
         )
         self.semantic_scholar_processor = SemanticScholarProcessor(
             self.semantic_scholar_client, verbose=verbose
@@ -56,9 +53,7 @@ class DocumentAnalyzer:
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
             print("[DEBUG] PDF download mode enabled")
-
-            strategy_name = "Qwant" if use_qwant_strategy else "Google grounding"
-            print(f"[DEBUG] Using {strategy_name} search strategy")
+            print("[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)")
 
         # Load configuration - now uses correct query file path
         self.queries = self.config.load_queries()
@@ -90,7 +85,6 @@ class DocumentAnalyzer:
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "query_file": self.config.settings.query_file,
-                "use_qwant_strategy": self.use_qwant_strategy,
                 "processed_list": self.processed_list,
                 "logfile": self.logfile,
                 "json_report_file": self.json_report_file,
@@ -131,14 +125,7 @@ class DocumentAnalyzer:
             )
             self.csv_report_file = config.get("csv_report_file", self.csv_report_file)
 
-            # Restore strategy setting if available
-            if "use_qwant_strategy" in config:
-                self.use_qwant_strategy = config["use_qwant_strategy"]
-                if self.verbose:
-                    strategy_name = (
-                        "Qwant" if self.use_qwant_strategy else "Google grounding"
-                    )
-                    print(f"[DEBUG] Restored search strategy: {strategy_name}")
+            # Remove qwant strategy handling (now using fallback strategy)
 
             # Restore report data
             if "report_data" in state_data:

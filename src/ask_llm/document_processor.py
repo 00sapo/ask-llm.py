@@ -8,7 +8,7 @@ import os
 from .api import GeminiAPIClient
 from .bibtex import BibtexProcessor
 from .pdf_search import PDFDownloader
-from .search_strategy import GoogleGroundingStrategy, QwantSearchStrategy
+from .search_strategy import FallbackSearchStrategy
 from .url_resolver import URLResolver
 
 
@@ -19,29 +19,22 @@ class DocumentProcessor:
         bibtex_processor: BibtexProcessor,
         pdf_downloader: PDFDownloader,
         verbose=False,
-        use_qwant_strategy=False,
     ):
         self.api_client = api_client
         self.bibtex_processor = bibtex_processor
         self.pdf_downloader = pdf_downloader
         self.verbose = verbose
-        self.use_qwant_strategy = use_qwant_strategy
         self.downloaded_pdfs = []  # Track downloaded PDF files for cleanup
 
-        # Initialize search strategy
-        if use_qwant_strategy:
-            self.search_strategy = QwantSearchStrategy(
-                self.pdf_downloader, verbose=verbose
+        # Initialize fallback search strategy (Google grounding with Qwant fallback)
+        url_resolver = URLResolver(verbose=verbose)
+        self.search_strategy = FallbackSearchStrategy(
+            self.api_client, url_resolver, self.pdf_downloader, verbose=verbose
+        )
+        if self.verbose:
+            print(
+                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)"
             )
-            if self.verbose:
-                print("[DEBUG] Using Qwant search strategy")
-        else:
-            url_resolver = URLResolver(verbose=verbose)
-            self.search_strategy = GoogleGroundingStrategy(
-                self.api_client, url_resolver, self.pdf_downloader, verbose=verbose
-            )
-            if self.verbose:
-                print("[DEBUG] Using Google grounding search strategy")
 
     def _is_url(self, path: str) -> bool:
         """Check if the given path is a URL"""
@@ -98,16 +91,12 @@ class DocumentProcessor:
         if not metadata:
             return None, None
 
-        if self.verbose:
-            strategy_name = "Qwant" if self.use_qwant_strategy else "Google grounding"
-            print(f"[DEBUG] Searching for PDF using {strategy_name} strategy")
-
         title = metadata.get("title", "")
         if title:
             print(f"🔍 Searching for PDF: {title}")
 
         try:
-            # Use strategy to discover URLs and get both path and original URL
+            # Use fallback strategy to discover URLs and get both path and original URL
             result = self.search_strategy.discover_urls_with_source(
                 metadata, query_text or "", response_data or {}
             )
@@ -124,7 +113,9 @@ class DocumentProcessor:
                 return downloaded_path, original_url
             else:
                 if self.verbose:
-                    print("[DEBUG] PDF search did not find any results")
+                    print(
+                        "[DEBUG] PDF search did not find any results with either strategy"
+                    )
                 print("❌ PDF search failed: No results found")
                 return None, None
         except Exception as e:
@@ -352,10 +343,9 @@ class DocumentProcessor:
                     response_data
                 )
 
-                # If using Google grounding strategy and no PDF found yet, try to discover URLs from grounding
+                # If no PDF found yet, try to discover URLs from grounding metadata
                 if (
                     not pdf_data
-                    and not self.use_qwant_strategy
                     and query_info.params.get("google_search", False)
                     and grounding_metadata
                 ):

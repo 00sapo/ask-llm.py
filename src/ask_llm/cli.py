@@ -31,11 +31,6 @@ def main(
         "--no-clear",
         help="Do not clear output files before processing (append mode)",
     ),
-    qwant: bool = typer.Option(
-        False,
-        "--qwant",
-        help="Use Qwant search strategy instead of Google grounding (default)",
-    ),
     load_state: Optional[Path] = typer.Option(
         None,
         "--load-state",
@@ -181,12 +176,9 @@ def main(
             console.print(
                 "[DEBUG] State saving enabled (ask_llm_state.json)", style="dim"
             )
-            if qwant:
-                console.print("[DEBUG] Using Qwant search strategy", style="dim")
-            else:
-                console.print(
-                    "[DEBUG] Using Google grounding search strategy", style="dim"
-                )
+            console.print(
+                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)", style="dim"
+            )
 
         # Convert Path objects to strings for compatibility (files might be empty)
         file_paths = [str(f) for f in files] if files else []
@@ -205,10 +197,9 @@ def main(
                 if base_url:
                     config_overrides["base_url"] = base_url
 
-                # Initialize with qwant flag (PDF download is always enabled now)
+                # Initialize (PDF download is always enabled now)
                 super().__init__(
                     verbose=verbose,
-                    use_qwant_strategy=qwant,
                     **config_overrides,
                 )
 
