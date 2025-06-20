@@ -133,6 +133,12 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
     ask-llm clean
     ```
 
+5. **Generate report (especially useful for peer-review):**
+
+    ```sh
+    jq -r '.documents[].queries[].response' ./analysis_report.json >report.md
+    ```
+
 ---
 
 ## INPUT FILES

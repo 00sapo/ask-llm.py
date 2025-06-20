@@ -1,4 +1,4 @@
-model-name: gemini-2.5-pro-preview-06-05
+model-name: gemini-2.5-flash
 temperature: 0.3
 google-search: false
 
