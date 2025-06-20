@@ -86,21 +86,13 @@ class SemanticScholarProcessor:
         if all_bibtex_entries:
             combined_bibtex = "\n\n".join(all_bibtex_entries)
 
-            # Save Semantic Scholar BibTeX to permanent file
-            semantic_scholar_file = "semantic_scholar.bib"
-            with open(semantic_scholar_file, "w", encoding="utf-8") as f:
-                f.write(combined_bibtex)
-
             if self.verbose:
                 print(
                     f"[DEBUG] Created combined BibTeX with {len(all_bibtex_entries)} entries"
                 )
-                print(
-                    f"[DEBUG] Saved Semantic Scholar BibTeX to: {semantic_scholar_file}"
-                )
 
             print(
-                f"💾 Semantic Scholar BibTeX saved: {semantic_scholar_file} ({len(all_bibtex_entries)} entries)"
+                f"💾 Semantic Scholar results ready ({len(all_bibtex_entries)} entries)"
             )
             return combined_bibtex
         else:

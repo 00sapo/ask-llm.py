@@ -148,10 +148,10 @@ class BibtexProcessor:
     def update_bibtex_with_urls(
         self, bibtex_file: str, url_mappings: Dict[str, str]
     ) -> int:
-        """Update BibTeX file with discovered PDF URLs"""
+        """Update BibTeX file with discovered PDF URLs and file paths"""
         if self.verbose:
             print(
-                f"[DEBUG] Updating BibTeX file {bibtex_file} with {len(url_mappings)} URLs"
+                f"[DEBUG] Updating BibTeX file {bibtex_file} with {len(url_mappings)} URLs/paths"
             )
 
         try:
@@ -167,16 +167,44 @@ class BibtexProcessor:
             for entry in bib_database.entries:
                 bibtex_key = entry.get("ID", "")
                 if bibtex_key in url_mappings:
-                    discovered_url = url_mappings[bibtex_key]
+                    discovered_path = url_mappings[bibtex_key]
 
-                    # Only add URL if not already present
-                    if "url" not in entry or not entry["url"].strip():
-                        entry["url"] = discovered_url
+                    # Determine if it's a URL or file path
+                    is_url = discovered_path.startswith(("http://", "https://"))
+
+                    if is_url:
+                        # Always add to url field, even if already present (preserve original)
+                        if "url" not in entry or not entry["url"].strip():
+                            entry["url"] = discovered_path
+                            updated_count += 1
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Added URL to {bibtex_key}: {discovered_path}"
+                                )
+
+                    # Always add file path to file field when available
+                    if "file" not in entry or not entry["file"].strip():
+                        entry["file"] = discovered_path
                         updated_count += 1
                         if self.verbose:
                             print(
-                                f"[DEBUG] Added URL to {bibtex_key}: {discovered_url}"
+                                f"[DEBUG] Added file path to {bibtex_key}: {discovered_path}"
                             )
+                    elif discovered_path not in entry["file"]:
+                        # Append to existing file field if not already present
+                        entry["file"] = f"{entry['file']};{discovered_path}"
+                        updated_count += 1
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Appended file path to {bibtex_key}: {discovered_path}"
+                            )
+
+            # Convert author lists back to strings before writing
+            for entry in bib_database.entries:
+                if "author" in entry and isinstance(entry["author"], list):
+                    entry["author"] = " and ".join(
+                        str(author) for author in entry["author"]
+                    )
 
             # Write back to file if we made updates
             if updated_count > 0:
@@ -288,6 +316,12 @@ class BibtexProcessor:
 
         for key, value in entry.items():
             if key not in ["ENTRYTYPE", "ID"]:
+                # Convert lists back to strings for reconstruction
+                if isinstance(value, list):
+                    if key == "author":
+                        value = " and ".join(str(author) for author in value)
+                    else:
+                        value = "; ".join(str(item) for item in value)
                 lines.append(f"  {key} = {{{value}}},")
 
         lines.append("}")

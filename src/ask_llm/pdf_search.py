@@ -2,7 +2,6 @@
 
 import os
 import re
-import tempfile
 from typing import Optional
 
 import requests_cache
@@ -23,11 +22,17 @@ class PDFDownloader:
             }
         )
 
+        # Create local downloads directory
+        self.downloads_dir = "ask_llm_downloads"
+        os.makedirs(self.downloads_dir, exist_ok=True)
+
         if self.verbose:
-            print("[DEBUG] Initialized PDF downloader with requests_cache")
+            print(
+                f"[DEBUG] Initialized PDF downloader with local directory: {self.downloads_dir}"
+            )
 
     def download_pdf(self, url: str, title: str) -> Optional[str]:
-        """Download PDF file to temporary location"""
+        """Download PDF file to local downloads directory"""
         try:
             if self.verbose:
                 print(f"[DEBUG] Downloading PDF from: {url}")
@@ -38,10 +43,15 @@ class PDFDownloader:
             if not safe_title:
                 safe_title = "downloaded_paper"
 
-            # Create temporary file
-            temp_dir = tempfile.gettempdir()
+            # Create local file path
             pdf_filename = f"ask_llm_{safe_title}_{hash(url) % 10000}.pdf"
-            pdf_path = os.path.join(temp_dir, pdf_filename)
+            pdf_path = os.path.join(self.downloads_dir, pdf_filename)
+
+            # Skip download if file already exists
+            if os.path.exists(pdf_path):
+                if self.verbose:
+                    print(f"[DEBUG] PDF already exists locally: {pdf_path}")
+                return pdf_path
 
             # Download with timeout and size limit
             response = self.session.get(url, timeout=30, stream=True)
@@ -96,21 +106,8 @@ class PDFDownloader:
             return None
 
     def cleanup_temp_files(self, pdf_paths: list):
-        """Clean up temporary PDF files"""
-        for pdf_path in pdf_paths:
-            if (
-                pdf_path
-                and os.path.exists(pdf_path)
-                and tempfile.gettempdir() in pdf_path
-            ):
-                # Only clean up files with our prefix
-                if "ask_llm_" in os.path.basename(pdf_path):
-                    try:
-                        os.remove(pdf_path)
-                        if self.verbose:
-                            print(f"[DEBUG] Cleaned up temporary PDF: {pdf_path}")
-                    except Exception as e:
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Could not remove temporary PDF {pdf_path}: {e}"
-                            )
+        """Keep all downloaded files permanently"""
+        if self.verbose:
+            print(
+                f"[DEBUG] Keeping {len(pdf_paths)} downloaded PDF files permanently in {self.downloads_dir}"
+            )

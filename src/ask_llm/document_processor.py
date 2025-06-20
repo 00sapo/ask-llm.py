@@ -487,11 +487,12 @@ class DocumentProcessor:
         return document_data, successful_queries > 0
 
     def cleanup_downloaded_pdfs(self):
-        """Clean up downloaded temporary PDF files"""
+        """Keep all downloaded PDF files permanently"""
         if self.downloaded_pdfs:
             if self.verbose:
                 print(
-                    f"[DEBUG] Cleaning up {len(self.downloaded_pdfs)} downloaded PDF files"
+                    f"[DEBUG] Keeping {len(self.downloaded_pdfs)} downloaded PDF files permanently"
                 )
-            self.pdf_downloader.cleanup_temp_files(self.downloaded_pdfs)
+            print(f"📁 Preserved {len(self.downloaded_pdfs)} downloaded PDF files")
+            # Don't delete files - just clear the tracking list
             self.downloaded_pdfs.clear()

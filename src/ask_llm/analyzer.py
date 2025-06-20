@@ -200,24 +200,23 @@ class DocumentAnalyzer:
         return False
 
     def _track_discovered_url(self, bibtex_key: str, discovered_urls: dict):
-        """Track discovered URLs for later BibTeX update"""
-        # Check if we discovered a URL for this document
+        """Track discovered URLs and file paths for later BibTeX update"""
+        # Check if we discovered a URL or file path for this document
         for doc in self.report_manager.results["documents"]:
-            if doc["bibtex_key"] == bibtex_key and doc.get("pdf_source") in [
-                "searched_download",
-            ]:
-                # Use the original URL if available, otherwise fall back to file path
-                if doc.get("pdf_url"):
+            if doc["bibtex_key"] == bibtex_key:
+                # Always track file paths if available
+                if doc.get("file_path"):
+                    discovered_urls[bibtex_key] = doc["file_path"]
+                    if self.verbose:
+                        print(
+                            f"[DEBUG] Tracked file path for {bibtex_key}: {doc['file_path']}"
+                        )
+                # Also track original URL if different from file path
+                elif doc.get("pdf_url") and doc["pdf_url"] != doc.get("file_path"):
                     discovered_urls[bibtex_key] = doc["pdf_url"]
                     if self.verbose:
                         print(
                             f"[DEBUG] Tracked discovered URL for {bibtex_key}: {doc['pdf_url']}"
-                        )
-                elif doc.get("file_path"):
-                    discovered_urls[bibtex_key] = doc["file_path"]
-                    if self.verbose:
-                        print(
-                            f"[DEBUG] Tracked discovered file path for {bibtex_key}: {doc['file_path']}"
                         )
                 break
 
@@ -337,14 +336,14 @@ class DocumentAnalyzer:
             if has_semantic_scholar:
                 # Check if any existing documents came from Semantic Scholar
                 for doc in self.report_manager.results.get("documents", []):
-                    if doc.get("bibtex_key", "").startswith("semanticscholar_"):
+                    if doc.get("bibtex_key", "").startswith("semanticscholar"):
                         has_existing_semantic_scholar_results = True
                         break
 
                 # Also check filtered documents
                 if not has_existing_semantic_scholar_results:
                     for doc in self.filtered_out_documents:
-                        if doc.get("bibtex_key", "").startswith("semanticscholar_"):
+                        if doc.get("bibtex_key", "").startswith("semanticscholar"):
                             has_existing_semantic_scholar_results = True
                             break
 
@@ -406,13 +405,19 @@ class DocumentAnalyzer:
                                 temp_merged_file,
                             )
 
-                            # Track discovered URLs
-                            if success and mapping["bibtex_key"]:
+                            # Track discovered URLs only for original BibTeX entries, not Semantic Scholar ones
+                            if (
+                                success
+                                and mapping["bibtex_key"]
+                                and not mapping["bibtex_key"].startswith(
+                                    "semanticscholar"
+                                )
+                            ):
                                 self._track_discovered_url(
                                     mapping["bibtex_key"], discovered_urls
                                 )
 
-                        # Mark original bibtex file for updating
+                        # Mark original bibtex file for updating (not the temporary merged file)
                         bibtex_files_to_update.append(bibtex_file)
 
                         if self.verbose:
@@ -422,39 +427,36 @@ class DocumentAnalyzer:
                 else:
                     # Case 2: Only Semantic Scholar results (no BibTeX files)
                     print("Processing Semantic Scholar results")
-                    merged_content = self.semantic_scholar_processor.merge_bibtex_files(
-                        None, semantic_scholar_bibtex
-                    )
 
-                    # Create a temporary file for Semantic Scholar results
-                    temp_ss_file = "semantic_scholar_results.bib"
-                    with open(temp_ss_file, "w", encoding="utf-8") as f:
-                        f.write(merged_content)
+                    # Create the permanent Semantic Scholar BibTeX file
+                    semantic_scholar_file = "semantic_scholar.bib"
+                    with open(semantic_scholar_file, "w", encoding="utf-8") as f:
+                        f.write(semantic_scholar_bibtex)
 
                     # Process the Semantic Scholar results
                     pdf_mappings = self.bibtex_processor.extract_pdfs_from_bibtex(
-                        temp_ss_file
+                        semantic_scholar_file
                     )
                     for mapping in pdf_mappings:
                         success = self.process_pdf(
                             mapping["pdf_path"],
                             mapping["bibtex_key"],
                             mapping["entry_text"],
-                            temp_ss_file,
+                            semantic_scholar_file,
                         )
 
-                        # Track discovered URLs
+                        # Track discovered URLs for Semantic Scholar entries too
                         if success and mapping["bibtex_key"]:
                             self._track_discovered_url(
                                 mapping["bibtex_key"], discovered_urls
                             )
 
                     # Mark semantic scholar file for updating
-                    bibtex_files_to_update.append("semantic_scholar.bib")
+                    bibtex_files_to_update.append(semantic_scholar_file)
 
                     if self.verbose:
                         print(
-                            f"[DEBUG] Created and processed Semantic Scholar file: {temp_ss_file}"
+                            f"[DEBUG] Created and processed Semantic Scholar file: {semantic_scholar_file}"
                         )
             else:
                 # Case 3: No Semantic Scholar results, process normally
@@ -540,21 +542,12 @@ class DocumentAnalyzer:
                 print("   • Semantic Scholar BibTeX: semantic_scholar.bib")
             print("=" * 50)
 
-            # Clean up temporary files if they exist
-            temp_files = ["semantic_scholar_results.bib"] + [
-                f"merged_{Path(f).name}" for f in bibtex_files
-            ]
-            for temp_file in temp_files:
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                        if self.verbose:
-                            print(f"[DEBUG] Cleaned up temporary file: {temp_file}")
-                    except Exception as e:
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Could not remove temporary file {temp_file}: {e}"
-                            )
+            # Keep temporary files permanently for future reference
+            temp_files = [f"merged_{Path(f).name}" for f in bibtex_files]
+            if temp_files:
+                if self.verbose:
+                    print("[DEBUG] Keeping temporary merged files permanently")
+                print(f"📁 Preserved {len(temp_files)} temporary BibTeX files")
 
         finally:
             # Always clean up downloaded PDFs
