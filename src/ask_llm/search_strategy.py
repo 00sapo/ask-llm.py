@@ -35,11 +35,13 @@ class FallbackSearchStrategy(SearchStrategy):
     def __init__(self, api_client, url_resolver, pdf_downloader, verbose=False):
         super().__init__(verbose)
 
-        # Initialize both strategies
+        # Initialize both strategies with API client for verification
         self.google_strategy = GoogleGroundingStrategy(
             api_client, url_resolver, pdf_downloader, verbose=verbose
         )
-        self.qwant_strategy = QwantSearchStrategy(pdf_downloader, verbose=verbose)
+        self.qwant_strategy = QwantSearchStrategy(
+            api_client, pdf_downloader, verbose=verbose
+        )
 
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
@@ -79,7 +81,11 @@ class GoogleGroundingStrategy(SearchStrategy):
         super().__init__(verbose)
         self.search_engine = GoogleGroundingEngine(api_client, verbose=verbose)
         self.pdf_finder = PDFFinder(
-            self.search_engine, url_resolver, pdf_downloader, verbose=verbose
+            self.search_engine,
+            url_resolver,
+            pdf_downloader,
+            api_client,
+            verbose=verbose,
         )
 
     def discover_urls_with_source(
@@ -92,13 +98,17 @@ class GoogleGroundingStrategy(SearchStrategy):
 class QwantSearchStrategy(SearchStrategy):
     """Strategy that uses Qwant search to discover PDFs"""
 
-    def __init__(self, pdf_downloader, verbose=False):
+    def __init__(self, api_client, pdf_downloader, verbose=False):
         super().__init__(verbose)
         self.search_engine = QwantEngine(verbose=verbose)
         # Create a simple URL resolver that just returns the input URLs
         self.url_resolver = SimpleURLResolver()
         self.pdf_finder = PDFFinder(
-            self.search_engine, self.url_resolver, pdf_downloader, verbose=verbose
+            self.search_engine,
+            self.url_resolver,
+            pdf_downloader,
+            api_client,
+            verbose=verbose,
         )
 
     def discover_urls_with_source(

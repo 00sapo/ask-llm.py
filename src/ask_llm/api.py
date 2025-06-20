@@ -171,6 +171,72 @@ class GeminiAPIClient:
                 print(f"[DEBUG] Exception details: {type(e).__name__}: {e}")
             raise
 
+    def verify_pdf_match(
+        self, pdf_content: str, expected_title: str, expected_authors: str = ""
+    ) -> Dict[str, Any]:
+        """Verify if a PDF matches expected metadata using LLM"""
+        verification_query = f"""Please analyze this PDF and determine if it matches the expected publication.
+
+Expected metadata:
+- Title: "{expected_title}"
+- Authors: "{expected_authors if expected_authors else "Not specified"}"
+
+Please respond with JSON indicating whether this PDF matches the expected publication.
+Consider title similarity, author matching, and overall content relevance.
+Be strict about matching - minor variations in title are acceptable, but completely different papers should be rejected."""
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": "application/pdf",
+                                "data": pdf_content,
+                            }
+                        },
+                        {"text": verification_query},
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "object",
+                    "properties": {
+                        "matches": {
+                            "type": "boolean",
+                            "description": "Whether the PDF matches the expected metadata",
+                        },
+                        "confidence": {
+                            "type": "number",
+                            "description": "Confidence level from 0.0 to 1.0",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of the matching decision",
+                        },
+                        "found_title": {
+                            "type": "string",
+                            "description": "Actual title found in the PDF",
+                        },
+                        "found_authors": {
+                            "type": "string",
+                            "description": "Actual authors found in the PDF",
+                        },
+                    },
+                    "required": ["matches", "confidence", "reason"],
+                },
+            },
+        }
+
+        # Create a temporary query config for verification
+        temp_query_config = QueryConfig(
+            text=verification_query, params={"model": self.default_model}
+        )
+
+        return self.make_request(payload, temp_query_config)
+
     def extract_response(
         self, response_data: Dict[str, Any]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
