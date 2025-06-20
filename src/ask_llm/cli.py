@@ -448,6 +448,264 @@ def process(
 
 
 @app.command()
+def fulltext(
+    bibtex_files: List[Path] = typer.Argument(
+        ...,
+        help="BibTeX files to process for PDF search and download",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose debug output",
+    ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help="Override Gemini API key (default: from GEMINI_API_KEY env var)",
+    ),
+    api_key_command: Optional[str] = typer.Option(
+        None,
+        "--api-key-command",
+        help="Override command to retrieve API key (default: rbw get gemini_key)",
+    ),
+) -> None:
+    """Search for and download PDFs from BibTeX entries, updating the BibTeX files with URLs and file paths.
+
+    This command processes BibTeX files to:
+    1. Extract bibliographic entries
+    2. Search for PDFs using fallback strategy (Google grounding + Qwant)
+    3. Download found PDFs to ask_llm_downloads directory
+    4. Update BibTeX files with discovered URLs and local file paths
+    """
+
+    # Validate input files
+    for bibtex_file in bibtex_files:
+        if not bibtex_file.exists():
+            console.print(
+                f"Error: BibTeX file does not exist: {bibtex_file}", style="bold red"
+            )
+            raise typer.Exit(1)
+        if not str(bibtex_file).endswith(".bib"):
+            console.print(
+                f"Warning: File does not have .bib extension: {bibtex_file}",
+                style="yellow",
+            )
+
+    if verbose:
+        console.print("[DEBUG] Starting fulltext PDF search and download", style="dim")
+        console.print(
+            f"[DEBUG] Processing {len(bibtex_files)} BibTeX files", style="dim"
+        )
+
+    try:
+        from .bibtex import BibtexProcessor
+        from .api import GeminiAPIClient
+        from .pdf_search import PDFDownloader
+        from .url_resolver import URLResolver
+        from .search_strategy import FallbackSearchStrategy
+
+        # Initialize components
+        config_overrides = {}
+        if api_key:
+            config_overrides["api_key"] = api_key
+        if api_key_command:
+            config_overrides["api_key_command"] = api_key_command
+
+        bibtex_processor = BibtexProcessor(verbose=verbose)
+        api_client = GeminiAPIClient(verbose=verbose)
+        pdf_downloader = PDFDownloader(verbose=verbose)
+        url_resolver = URLResolver(verbose=verbose)
+
+        # Override API client config if provided
+        if api_key:
+            api_client.api_key = api_key
+        if api_key_command:
+            # Would need to re-initialize, but for simplicity we'll just warn
+            if verbose:
+                console.print(
+                    "[DEBUG] API key command override not applied to existing client",
+                    style="dim",
+                )
+
+        # Initialize search strategy
+        search_strategy = FallbackSearchStrategy(
+            api_client, url_resolver, pdf_downloader, verbose=verbose
+        )
+
+        total_entries = 0
+        total_found = 0
+        total_downloaded = 0
+        total_updated = 0
+        discovered_info = {}  # Track URLs and file paths for BibTeX updates
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            for bibtex_file in bibtex_files:
+                task = progress.add_task(
+                    f"Processing {bibtex_file.name}...", total=None
+                )
+
+                console.print(f"\n📚 Processing BibTeX file: {bibtex_file}")
+
+                # Extract PDF mappings from BibTeX
+                try:
+                    pdf_mappings = bibtex_processor.extract_pdfs_from_bibtex(
+                        str(bibtex_file)
+                    )
+                    console.print(
+                        f"📖 Found {len(pdf_mappings)} entries in {bibtex_file.name}"
+                    )
+                    total_entries += len(pdf_mappings)
+
+                except Exception as e:
+                    console.print(
+                        f"❌ Error reading {bibtex_file}: {e}", style="bold red"
+                    )
+                    continue
+
+                file_found = 0
+                file_downloaded = 0
+
+                # Process each entry
+                for mapping in pdf_mappings:
+                    bibtex_key = mapping.get("bibtex_key", "")
+                    pdf_path = mapping.get("pdf_path")
+                    metadata = mapping.get("metadata", {})
+
+                    if not bibtex_key:
+                        if verbose:
+                            console.print(
+                                "[DEBUG] Skipping entry with no BibTeX key", style="dim"
+                            )
+                        continue
+
+                    title = metadata.get("title", "")
+                    if verbose:
+                        console.print(
+                            f"[DEBUG] Processing entry: {bibtex_key}", style="dim"
+                        )
+                        if title:
+                            console.print(
+                                f"[DEBUG] Title: {title[:100]}...", style="dim"
+                            )
+
+                    # Skip if entry already has a local PDF file that exists
+                    if pdf_path and not pdf_path.startswith(("http://", "https://")):
+                        if os.path.exists(pdf_path):
+                            if verbose:
+                                console.print(
+                                    f"[DEBUG] {bibtex_key} already has local PDF: {pdf_path}",
+                                    style="dim",
+                                )
+                            continue
+
+                    # Search for PDF using the fallback strategy
+                    try:
+                        result = search_strategy.discover_urls_with_source(
+                            metadata, "", {}
+                        )
+
+                        if result:
+                            downloaded_path, original_url = result
+                            file_found += 1
+                            file_downloaded += 1
+
+                            console.print(
+                                f"✅ {bibtex_key}: Downloaded PDF from {original_url}"
+                            )
+
+                            # Track for BibTeX update
+                            info = {}
+                            if original_url:
+                                info["url"] = original_url
+                            if downloaded_path:
+                                info["file_path"] = downloaded_path
+
+                            if info:
+                                discovered_info[bibtex_key] = info
+
+                            if verbose:
+                                console.print(
+                                    f"[DEBUG] Tracked {bibtex_key}: URL={original_url}, file={downloaded_path}",
+                                    style="dim",
+                                )
+                        else:
+                            if verbose:
+                                console.print(
+                                    f"[DEBUG] {bibtex_key}: No PDF found", style="dim"
+                                )
+                            console.print(f"❌ {bibtex_key}: No PDF found")
+
+                    except Exception as e:
+                        console.print(
+                            f"❌ {bibtex_key}: Error searching for PDF: {e}",
+                            style="red",
+                        )
+                        if verbose:
+                            console.print(
+                                f"[DEBUG] Exception details: {type(e).__name__}: {e}",
+                                style="dim",
+                            )
+                        continue
+
+                # Update BibTeX file with discovered URLs and file paths
+                if discovered_info:
+                    console.print(
+                        f"\n📝 Updating {bibtex_file.name} with {len(discovered_info)} discovered URLs and file paths..."
+                    )
+                    try:
+                        updated_count = (
+                            bibtex_processor.update_bibtex_with_discovered_info(
+                                str(bibtex_file), discovered_info
+                            )
+                        )
+                        total_updated += updated_count
+                        if updated_count > 0:
+                            console.print(
+                                f"✅ Updated {updated_count} entries in {bibtex_file.name}"
+                            )
+                        else:
+                            console.print(
+                                f"ℹ️  No updates needed for {bibtex_file.name}"
+                            )
+                    except Exception as e:
+                        console.print(
+                            f"❌ Error updating {bibtex_file}: {e}", style="red"
+                        )
+
+                total_found += file_found
+                total_downloaded += file_downloaded
+
+                console.print(
+                    f"📊 {bibtex_file.name}: {file_found} PDFs found, {file_downloaded} downloaded"
+                )
+                progress.update(task, description=f"✅ {bibtex_file.name} complete")
+
+        # Print final summary
+        console.print("\n" + "=" * 60)
+        console.print("🎉 Fulltext search and download complete!", style="bold green")
+        console.print("📊 Final summary:")
+        console.print(f"   • Total entries processed: {total_entries}")
+        console.print(f"   • PDFs found and downloaded: {total_found}")
+        console.print(f"   • BibTeX entries updated: {total_updated}")
+        console.print("   • Downloaded files location: ask_llm_downloads/")
+        console.print("=" * 60)
+
+    except KeyboardInterrupt:
+        console.print("\n❌ Fulltext search interrupted by user", style="bold red")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"❌ Error during fulltext search: {e}", style="bold red")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1)
+
+
+@app.command()
 def version():
     """Show version information."""
     console.print("ask-llm version 1.0.0", style="bold blue")

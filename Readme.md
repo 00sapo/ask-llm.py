@@ -64,15 +64,7 @@ PDF) using a 500 Mbps connection.
 
 ## INSTALLATION
 
-The recommended way to install **ask-llm** is using `pipx`:
-
-```sh
-pipx install ask-llm
-```
-
-*(Assumes the package `ask-llm` is on PyPI.)*
-
-Or, install from a Git repository:
+Install from a Git repository:
 
 ```sh
 pipx install git+https://github.com/your-org/ask-llm.git # Replace with actual URL
@@ -93,69 +85,52 @@ Ensure `pipx` is installed ([official guide](https://pipx.pypa.io/stable/install
 
 First, set up a `query.md` file (see [Input Files](#input-files) section or examples in `prompt-lib/`). Then, use the command-line interface:
 
-### Command-Line Interface
-
-```sh
- Usage: ask-llm [OPTIONS] [FILES]... COMMAND [ARGS]...
-
- Process PDF files and BibTeX bibliographies using the Gemini API with structured output.
-
-
-╭─ Arguments ────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│   files      [FILES]...  PDF files and/or BibTeX files to process (optional when using Semantic Scholar)       │
-│                          [default: None]                                                                       │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --no-clear                       Do not clear output files before processing (append mode)                     │
-│ --qwant                          Use Qwant search strategy instead of Google grounding (default)               │
-│ --load-state               PATH  Load and resume from saved state file [default: None]                         │
-│ --resume                         Resume from default state file (ask_llm_state.json)                           │
-│ --query-file               PATH  Override query file (default: query.md) [default: None]                       │
-│ --report                   PATH  Override report output file (default: analysis_report.json and                │
-│                                  analysis_report.csv)                                                          │
-│                                  [default: None]                                                               │
-│ --log                      PATH  Override log output file (default: log.txt) [default: None]                   │
-│ --processed-list           PATH  Override processed files list output (default: processed_files.txt)           │
-│                                  [default: None]                                                               │
-│ --api-key                  TEXT  Override Gemini API key (default: from GEMINI_API_KEY env var)                │
-│                                  [default: None]                                                               │
-│ --api-key-command          TEXT  Override command to retrieve API key (default: rbw get gemini_key)            │
-│                                  [default: None]                                                               │
-│ --base-url                 TEXT  Override Gemini API base URL (default:                                        │
-│                                  https://generativelanguage.googleapis.com/v1beta)                             │
-│                                  [default: None]                                                               │
-│ --verbose          -v            Enable verbose debug output                                                   │
-│ --help                           Show this message and exit.                                                   │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ version   Show version information.                                                                            │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-
 ### Quick Examples
+
+0. **Get help:**
+
+    ```sh
+    ask-llm --help
+    ```
+
+    ```sh
+    ask-llm process --help
+    ```
+
+    ```sh
+    ask-llm fulltext --help
+    ```
 
 1. **Analyze PDFs:**
 
     ```sh
-    ask-llm paper1.pdf paper2.pdf
+    ask-llm process paper1.pdf paper2.pdf
     ```
 
 2. **Analyze PDFs from a BibTeX file:**
 
     ```sh
-    ask-llm references.bib
+    ask-llm process references.bib
     ```
 
-3. **Use Semantic Scholar (queries defined in `query.md`):**
+3. **Retrieve PDFs for items in a BibTeX file:**
 
     ```sh
-    ask-llm
+    ask-llm fulltext --bibtex references.bib
     ```
 
-4. **Custom query file and CSV output:**
+    ```
+
+4. **Custom query file:**
 
     ```sh
-    ask-llm --query-file custom_queries.md --report results.csv my_document.pdf
+    ask-llm process --query-file custom_queries.md
+    ```
+
+5. **Clean artifact files:**
+
+    ```sh
+    ask-llm clean
     ```
 
 ---
@@ -199,7 +174,7 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   ```
 
 - **BibTeX Files (`.bib`)**
-  Processes PDFs linked in `file` fields (relative paths to the BibTeX file are supported). If a PDF is missing, DuckDuckGo attempts to find it online using title/authors; otherwise, analysis proceeds using only the BibTeX metadata. Automatic PDF download can be disabled with `--no-pdf-download`.
+  Processes PDFs linked in `file` fields (relative paths to the BibTeX file are supported). If a PDF is missing, we will attempt to find it online using title/authors; if we can't, analysis proceeds using only the BibTeX metadata.
 
 ---
 
@@ -209,56 +184,13 @@ Default names (can be overridden via CLI options):
 
 - **`analysis_report.json`**: Main structured report in JSON format.
 - **`analysis_report.csv`**: Main structured report in CSV format.
+- **`semantic_scholar.bib`**: BibTeX entries for papers found by Semantic Scholar queries.
+- **`ask_llm_downloads/`**: Directory containing downloaded PDFs.
 - **`log.txt`**: Raw API responses from the LLM.
 - **`processed_files.txt`**: List of processed files/BibTeX keys.
 - **`filtered_out_documents.txt`**: List of documents excluded by `Filter-On` criteria in `query.md`.
-- **`semantic_scholar.bib`**: BibTeX entries for papers found by Semantic Scholar queries.
 - **\*.sqlite**: caches for the requests in order to respect retry. To zeroing the cache, delete the
   `.sqlite` files corresponding to the requests that you want to reset.
-
-### Report Structure Overview (`analysis_report.json`)
-
-The JSON report includes `metadata` (generation time, model used, query details) and a `documents` array. Each document object in the array contains:
-
-- `id`: A unique identifier for the document in this report.
-- `file_path`: Path to the PDF file or URL.
-- `bibtex_key`: BibTeX key, if applicable.
-- `is_metadata_only`: Boolean, true if only BibTeX metadata was processed (PDF not found/used).
-- `is_url`: Boolean, true if the input was a URL.
-- `queries`: An array of results, one for each query run on the document. Each query result includes:
-  - `query_id`: Identifier for the query (from `query.md`).
-  - `response`: The LLM's response (parsed JSON if a schema was provided, otherwise text).
-  - `grounding_metadata`: Metadata from Google Search or URL context, if applicable.
-
-Example snippet:
-
-```json
-{
-  "metadata": {
-    "generated": "2023-12-07T10:30:00",
-    "model_used": "gemini-1.5-flash-latest",
-    "queries": [ { "id": 1, "text": "Summarize..." } ]
-  },
-  "documents": [
-    {
-      "id": 1,
-      "file_path": "paper1.pdf",
-      "bibtex_key": "smith2023",
-      "is_metadata_only": false,
-      "is_url": false,
-      "queries": [
-        {
-          "query_id": 1,
-          "response": {"main_finding": "This paper introduces X."},
-          "grounding_metadata": null
-        }
-      ]
-    }
-  ]
-}
-```
-
-For CSV output, document metadata and query responses (JSON serialized if structured, otherwise plain text with newlines removed) are organized into columns.
 
 ---
 
