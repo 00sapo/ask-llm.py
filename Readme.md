@@ -51,14 +51,15 @@ ask-llm [OPTIONS] [PDF|BIB]...
 
 In my experiments (see `prompt-lib/` for examples), I found the following:
 
-- 90% of the papers successfully found a PDF online; of these, only 11% had certainty ≤0.8,
+- 85% of the papers successfully found a PDF online; of these, only 3% had certainty ≤0.8,
 indicating a possibly wrong PDF.
 - Gemini-2.5-pro had the following distribution of certainty (even if the PDF was wrong and only the
 metadata were used)
 ![Histogram of certainty](https://github.com/00sapo/ask-llm.py/blob/master/chart.png?raw=true)
-- Semantic Scholar retrieved 446 items, of which 39% were excluded by the gemini filter-on criteria
-- On average, 35 seconds per paper were spent on the analysis (including the time to retrieve the
+- Semantic Scholar retrieved 446 items, of which 34% were excluded by the gemini filter-on criteria
+- On average, 64 seconds per paper were spent on the analysis (including the time to retrieve the
 PDF) using a 500 Mbps connection.
+- In total, I spent ~0.75€ for the whole process.
   
 ---
 
