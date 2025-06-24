@@ -58,12 +58,20 @@ class SemanticScholarProcessor:
             # Perform the search
             try:
                 papers = self.semantic_scholar_client.search_papers(
-                    query_info.text, ss_params
+                    query_info.text,
+                    ss_params,
+                    relevance_search=query_info.params.get("bulk_search", False),
                 )
 
                 print(f"📚 Found {len(papers)} papers for query {query_idx + 1}")
 
                 # Create BibTeX entries for each paper
+                limit = query_info.params.get("limit", 1000)
+                if len(papers) > limit:
+                    print(
+                        f"🧗🏻Limiting results to {limit} papers for query {query_idx + 1}"
+                    )
+                    papers = papers[:limit]
                 for paper in papers:
                     entry_key = f"semanticscholar{entry_counter}"
                     bibtex_entry = self.semantic_scholar_client.create_bibtex_entry(

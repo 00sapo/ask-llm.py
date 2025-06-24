@@ -184,6 +184,7 @@ class ConfigManager:
                         "google-search:",
                         "filter-on:",
                         "semantic-scholar:",
+                        "relevance-api:",
                         "limit:",
                         "offset:",
                         "sort:",
@@ -233,6 +234,16 @@ class ConfigManager:
                             print(
                                 f"Warning: Invalid semantic-scholar value '{value}', should be true/false"
                             )
+                    elif key == "limit":
+                        try:
+                            current_params["limit"] = int(value)
+                        except ValueError:
+                            print(f"Warning: Invalid limit value '{value}', ignoring")
+                    elif key == "relevance-search":
+                        if value.lower() in ["true", "yes", "1", "on"]:
+                            current_params["relevance_search"] = True
+                        else:
+                            current_params["relevance_search"] = False
                     elif key == "filter_on":
                         current_params["filter_on"] = value
                     # Add semantic scholar search parameters
@@ -256,7 +267,7 @@ class ConfigManager:
                     query_lines.append(line)
 
             # Define one-shot parameters that should not persist across queries
-            one_shot_params = {"semantic_scholar", "filter_on"}
+            one_shot_params = {"semantic_scholar", "filter_on", "relevance_search"}
 
             # Separate current parameters into persistent and one-shot
             persistent_params = {

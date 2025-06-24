@@ -25,7 +25,10 @@ class SemanticScholarClient:
             print("[DEBUG] Using requests_cache with SQLite backend")
 
     def search_papers(
-        self, query: str, search_params: Dict[str, Any] = None
+        self,
+        query: str,
+        search_params: Dict[str, Any] = None,
+        relevance_search: bool = False,
     ) -> List[Dict[str, Any]]:
         """Search for papers using Semantic Scholar bulk search API"""
         if self.verbose:
@@ -33,10 +36,13 @@ class SemanticScholarClient:
 
         # Default parameters
         params = {
-            "query": query,
             "sort": "citationCount:desc",  # Default sort by citation count descending
             "fields": "title,abstract,authors,year,openAccessPdf,url,citationCount,venue,externalIds",
         }
+        if relevance_search:
+            params["query"] = query
+        else:
+            params["q"] = query  # Use 'q' for bulk search (bug in the API?)
 
         # Apply user-specified parameters
         if search_params:
@@ -46,7 +52,10 @@ class SemanticScholarClient:
             print(f"[DEBUG] Search parameters: {params}")
 
         try:
-            url = f"{self.base_url}/paper/search/bulk"
+            if relevance_search:
+                url = f"{self.base_url}/paper/search/"
+            else:
+                url = f"{self.base_url}/paper/search/bulk"
             response = self.session.get(url, params=params, timeout=30)
 
             if self.verbose:
@@ -177,17 +186,3 @@ class SemanticScholarClient:
         bibtex_lines.append("}")
 
         return "\n".join(bibtex_lines)
-
-    def search_and_create_bibtex(
-        self, query: str, search_params: Dict[str, Any] = None
-    ) -> str:
-        """Search for papers and return them as a BibTeX bibliography"""
-        papers = self.search_papers(query, search_params)
-
-        bibtex_entries = []
-        for i, paper in enumerate(papers):
-            entry_key = f"semanticscholar{i + 1}"
-            bibtex_entry = self.create_bibtex_entry(paper, entry_key)
-            bibtex_entries.append(bibtex_entry)
-
-        return "\n\n".join(bibtex_entries)

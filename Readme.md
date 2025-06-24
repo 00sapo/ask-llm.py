@@ -151,11 +151,13 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   - `Google-Search: <true|false>` (enables Google Search grounding for the LLM)
   - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search) for advanced syntax. PDFs for found papers are searched using DuckDuckGo if not directly available from Semantic Scholar.)
     - Additional Semantic Scholar parameters (e.g., `Sort: citationCount:desc`, `Fields-of-study: Computer Science`) can be included.
+    - `relevance-search=true` enables the use of the sorting by relevance (limited to the first 100 results) and of the Semantic Scholar's retrieval score (i.e., the same used in the web interface).
+    - `relevance-search=false` _(default)_ disables the relevance search and uses boolean matching, sorting by citations (by default) or by recency, up to 1000 results. Compared to the API, we added a `limit` parameter to control the number of results returned.
   - `Filter-On: <field_name>` (for JSON output, filters documents where this boolean field in the response is `false`)
   - **JSON Output Structure:** Embed a ```json ...``` code block to define the desired output schema for the LLM.
 
   Parameter names are case-insensitive, and they generally persist to subsequent queries unless
-  overridden, except for *one-shot* parameters (currently `filter-on` and `Semantic-Scholar`). See
+  overridden, except for _one-shot_ parameters (currently `filter-on` and `Semantic-Scholar`). See
   `prompt-lib/` for more examples.
 
   Basic `query.md` structure:
