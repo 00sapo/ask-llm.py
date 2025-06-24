@@ -15,6 +15,7 @@ class SemanticScholarClient:
             cache_name="semantic_scholar_cache",
             expire_after=1800,  # Cache for 30 minutes
             backend="sqlite",
+            match_headers=True,
         )
         self.session.headers.update({"Content-Type": "application/json"})
 
@@ -33,6 +34,7 @@ class SemanticScholarClient:
         """Search for papers using Semantic Scholar bulk search API"""
         if self.verbose:
             print(f"[DEBUG] Searching Semantic Scholar for: {query}")
+            print(f"[DEBUG] Relevance search mode: {relevance_search}")
 
         # Default parameters - explicitly include paperId
         params = {
@@ -53,9 +55,12 @@ class SemanticScholarClient:
 
         try:
             if relevance_search:
-                url = f"{self.base_url}/paper/search/"
+                url = f"{self.base_url}/paper/search"
             else:
                 url = f"{self.base_url}/paper/search/bulk"
+            if self.verbose:
+                print(f"[DEBUG] Making request to: {url} with params: {params}")
+
             response = self.session.get(url, params=params, timeout=30)
 
             if self.verbose:

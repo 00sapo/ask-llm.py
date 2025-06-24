@@ -18,6 +18,7 @@ class QwantEngine(SearchEngine):
         self.session = requests_cache.CachedSession(
             cache_name="qwant_search_cache",
             expire_after=3600,  # Cache for 1 hour
+            match_headers=True,
             backend="sqlite",
         )
         self.last_search_time = 0  # Track when we last made a search

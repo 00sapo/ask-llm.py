@@ -64,7 +64,7 @@ class SemanticScholarProcessor:
                 papers = self.semantic_scholar_client.search_papers(
                     query_info.text,
                     ss_params,
-                    relevance_search=query_info.params.get("bulk_search", False),
+                    relevance_search=query_info.params.get("relevance_search", False),
                 )
 
                 print(f"📚 Found {len(papers)} total papers for query {query_idx + 1}")

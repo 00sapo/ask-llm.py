@@ -184,7 +184,7 @@ class ConfigManager:
                         "google-search:",
                         "filter-on:",
                         "semantic-scholar:",
-                        "relevance-api:",
+                        "relevance-search:",
                         "limit:",
                         "offset:",
                         "sort:",
@@ -239,7 +239,7 @@ class ConfigManager:
                             current_params["limit"] = int(value)
                         except ValueError:
                             print(f"Warning: Invalid limit value '{value}', ignoring")
-                    elif key == "relevance-search":
+                    elif key == "relevance_search":
                         if value.lower() in ["true", "yes", "1", "on"]:
                             current_params["relevance_search"] = True
                         else:

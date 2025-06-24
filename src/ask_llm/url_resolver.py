@@ -11,6 +11,7 @@ class URLResolver:
         self.session = requests_cache.CachedSession(
             cache_name="url_resolver_cache",
             expire_after=3600,  # Cache for 1 hour
+            match_headers=True,
             backend="sqlite",
         )
         self.session.headers.update(

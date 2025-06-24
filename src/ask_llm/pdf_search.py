@@ -15,6 +15,7 @@ class PDFDownloader:
             cache_name="pdf_download_cache",
             expire_after=3600,  # Cache for 1 hour
             backend="sqlite",
+            match_headers=True,
         )
         self.session.headers.update(
             {

@@ -22,6 +22,8 @@ class GeminiAPIClient:
             cache_name="gemini_api_cache",
             expire_after=3600,  # Cache for 1 hour
             backend="sqlite",
+            ignore_parameters=["key"],  # Ignore API key in cache
+            match_headers=True,
         )
         self.session.headers.update({"Content-Type": "application/json"})
 
