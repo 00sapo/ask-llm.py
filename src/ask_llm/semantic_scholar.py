@@ -3,6 +3,7 @@
 import requests
 import requests_cache
 import json
+import time
 from typing import Dict, Any, List
 
 
@@ -38,13 +39,15 @@ class SemanticScholarClient:
 
         # Default parameters - explicitly include paperId
         params = {
-            "sort": "citationCount:desc",  # Default sort by citation count descending
-            "fields": "paperId,title,abstract,authors,year,openAccessPdf,url,citationCount,venue,externalIds",
+            "fields": "paperId,title,abstract,authors,year,openAccessPdf,url,citationCount,influentialCitationCount,venue,externalIds"
         }
         if relevance_search:
             params["query"] = query
+            params["offset"] = 0
+            params["limit"] = 100
         else:
             params["q"] = query  # Use 'q' for bulk search (bug in the API?)
+            params["sort"] = "citationCount:desc"
 
         # Apply user-specified parameters
         if search_params:
@@ -61,7 +64,42 @@ class SemanticScholarClient:
             if self.verbose:
                 print(f"[DEBUG] Making request to: {url} with params: {params}")
 
-            response = self.session.get(url, params=params, timeout=30)
+            # Implement retry logic for 429 errors with exponential backoff
+            max_retries = 5
+            wait_times = [30, 60, 120, 180, 300]  # 30s, 1m, 2m, 3m, 5m
+
+            for attempt in range(max_retries + 1):
+                try:
+                    response = self.session.get(url, params=params, timeout=30)
+
+                    if response.status_code == 429:
+                        if attempt < max_retries:
+                            wait_time = wait_times[attempt]
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Rate limited (429), waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
+                                )
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            raise requests.exceptions.HTTPError(
+                                f"Rate limited after {max_retries} retries"
+                            )
+
+                    # If we get here, the request succeeded or failed with a non-429 error
+                    break
+
+                except requests.exceptions.RequestException as e:
+                    if attempt < max_retries and "429" in str(e):
+                        wait_time = wait_times[attempt]
+                        if self.verbose:
+                            print(
+                                f"[DEBUG] Request failed with rate limit, waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
+                            )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise
 
             if self.verbose:
                 print(f"[DEBUG] Response status: {response.status_code}")
