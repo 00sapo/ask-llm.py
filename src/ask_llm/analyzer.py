@@ -49,11 +49,16 @@ class DocumentAnalyzer:
         self.json_report_file = "analysis_report.json"
         self.csv_report_file = "analysis_report.csv"
         self.filtered_out_documents = []  # Track filtered out documents
+        self.seen_paper_ids = (
+            set()
+        )  # Track Semantic Scholar paper IDs for deduplication
 
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
             print("[DEBUG] PDF download mode enabled")
-            print("[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)")
+            print(
+                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)"
+            )
 
         # Load configuration - now uses correct query file path
         self.queries = self.config.load_queries()
@@ -101,6 +106,9 @@ class DocumentAnalyzer:
             ],
             "report_data": self.report_manager.results,
             "filtered_out_documents": self.filtered_out_documents,
+            "seen_paper_ids": list(
+                self.seen_paper_ids
+            ),  # Convert set to list for JSON serialization
         }
 
         self.config.save_state(state_data, state_file)
@@ -135,11 +143,18 @@ class DocumentAnalyzer:
             if "filtered_out_documents" in state_data:
                 self.filtered_out_documents = state_data["filtered_out_documents"]
 
+            # Restore seen paper IDs
+            if "seen_paper_ids" in state_data:
+                self.seen_paper_ids = set(
+                    state_data["seen_paper_ids"]
+                )  # Convert list back to set
+
             if self.verbose:
                 doc_count = len(self.report_manager.results.get("documents", []))
                 filtered_count = len(self.filtered_out_documents)
+                seen_papers_count = len(self.seen_paper_ids)
                 print(
-                    f"[DEBUG] Restored state with {doc_count} documents and {filtered_count} filtered documents"
+                    f"[DEBUG] Restored state with {doc_count} documents, {filtered_count} filtered documents, and {seen_papers_count} seen paper IDs"
                 )
 
             return True
@@ -350,7 +365,7 @@ class DocumentAnalyzer:
                     print("[DEBUG] Processing Semantic Scholar queries")
                 semantic_scholar_bibtex = (
                     self.semantic_scholar_processor.process_semantic_scholar_queries(
-                        self.queries
+                        self.queries, self.seen_paper_ids
                     )
                 )
             elif has_semantic_scholar and has_existing_semantic_scholar_results:

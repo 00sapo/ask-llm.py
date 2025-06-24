@@ -34,10 +34,10 @@ class SemanticScholarClient:
         if self.verbose:
             print(f"[DEBUG] Searching Semantic Scholar for: {query}")
 
-        # Default parameters
+        # Default parameters - explicitly include paperId
         params = {
             "sort": "citationCount:desc",  # Default sort by citation count descending
-            "fields": "title,abstract,authors,year,openAccessPdf,url,citationCount,venue,externalIds",
+            "fields": "paperId,title,abstract,authors,year,openAccessPdf,url,citationCount,venue,externalIds",
         }
         if relevance_search:
             params["query"] = query

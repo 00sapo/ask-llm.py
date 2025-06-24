@@ -9,10 +9,14 @@ class SemanticScholarProcessor:
         self.semantic_scholar_client = semantic_scholar_client
         self.verbose = verbose
 
-    def process_semantic_scholar_queries(self, queries) -> str:
+    def process_semantic_scholar_queries(self, queries, seen_paper_ids=None) -> str:
         """Process all Semantic Scholar queries and return combined BibTeX content"""
+        if seen_paper_ids is None:
+            seen_paper_ids = set()
+
         if self.verbose:
             print("[DEBUG] Processing all Semantic Scholar queries")
+            print(f"[DEBUG] Starting with {len(seen_paper_ids)} already seen paper IDs")
 
         all_bibtex_entries = []
         entry_counter = 1
@@ -63,16 +67,49 @@ class SemanticScholarProcessor:
                     relevance_search=query_info.params.get("bulk_search", False),
                 )
 
-                print(f"📚 Found {len(papers)} papers for query {query_idx + 1}")
+                print(f"📚 Found {len(papers)} total papers for query {query_idx + 1}")
 
-                # Create BibTeX entries for each paper
+                # Deduplicate papers based on paperId
+                unique_papers = []
+                skipped_count = 0
+
+                for paper in papers:
+                    paper_id = paper.get("paperId")
+                    if paper_id:
+                        if paper_id not in seen_paper_ids:
+                            unique_papers.append(paper)
+                            seen_paper_ids.add(paper_id)
+                        else:
+                            skipped_count += 1
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Skipping duplicate paper ID: {paper_id}"
+                                )
+                    else:
+                        # If no paperId, still include the paper but warn
+                        unique_papers.append(paper)
+                        if self.verbose:
+                            print("[DEBUG] Paper has no paperId, including anyway")
+
+                if skipped_count > 0:
+                    print(
+                        f"🔄 Skipped {skipped_count} duplicate papers for query {query_idx + 1}"
+                    )
+
+                print(
+                    f"📖 Processing {len(unique_papers)} unique papers for query {query_idx + 1}"
+                )
+
+                # Apply limit to unique papers
                 limit = query_info.params.get("limit", 1000)
-                if len(papers) > limit:
+                if len(unique_papers) > limit:
                     print(
                         f"🧗🏻Limiting results to {limit} papers for query {query_idx + 1}"
                     )
-                    papers = papers[:limit]
-                for paper in papers:
+                    unique_papers = unique_papers[:limit]
+
+                # Create BibTeX entries for each unique paper
+                for paper in unique_papers:
                     entry_key = f"semanticscholar{entry_counter}"
                     bibtex_entry = self.semantic_scholar_client.create_bibtex_entry(
                         paper, entry_key
@@ -81,7 +118,9 @@ class SemanticScholarProcessor:
                     entry_counter += 1
 
                 if self.verbose:
-                    print(f"[DEBUG] Query {query_idx + 1} added {len(papers)} papers")
+                    print(
+                        f"[DEBUG] Query {query_idx + 1} added {len(unique_papers)} unique papers"
+                    )
 
             except Exception as e:
                 print(
@@ -98,9 +137,10 @@ class SemanticScholarProcessor:
                 print(
                     f"[DEBUG] Created combined BibTeX with {len(all_bibtex_entries)} entries"
                 )
+                print(f"[DEBUG] Total seen paper IDs: {len(seen_paper_ids)}")
 
             print(
-                f"💾 Semantic Scholar results ready ({len(all_bibtex_entries)} entries)"
+                f"💾 Semantic Scholar results ready ({len(all_bibtex_entries)} unique entries)"
             )
             return combined_bibtex
         else:
