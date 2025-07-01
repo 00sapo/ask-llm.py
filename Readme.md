@@ -59,7 +59,7 @@ metadata were used)
 - Semantic Scholar retrieved 446 items, of which 34% were excluded by the gemini filter-on criteria
 - On average, 64 seconds per paper were spent on the analysis (including the time to retrieve the
 PDF) using a 500 Mbps connection.
-- In total, I spent ~0.75€ for the whole process.
+- In total, I usually spend 1-2€ for one whole survey. Limiting output tokens (e.g. using structured output) helps containing the price.
   
 ---
 
