@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
     api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
-    api_key_command: str = Field("rbw get gemini_key", env="GEMINI_API_KEY_COMMAND")
+    api_key_command: Optional[str] = Field(None, env="GEMINI_API_KEY_COMMAND")
     base_url: str = Field(
         "https://generativelanguage.googleapis.com/v1beta", env="GEMINI_BASE_URL"
     )
@@ -50,6 +50,8 @@ class ConfigManager:
     ):
         self.verbose = verbose
         self.settings = Settings(verbose=verbose)
+        # just to work for now
+        api_key_command = "rbw get gemini_api_key"
 
         # Apply overrides before loading queries
         if query_file:
@@ -89,7 +91,7 @@ class ConfigManager:
             if e.stderr:
                 print(f"Error output: {e.stderr}")
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure GEMINI_API_KEY_COMMAND"
+                "Tip: Set GEMINI_API_KEY environment variable or configure a command to retrieve the api key"
             )
             sys.exit(1)
         except FileNotFoundError:
@@ -103,7 +105,7 @@ class ConfigManager:
                 f"Make sure the command '{command_name}' is installed and in your PATH"
             )
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure a different GEMINI_API_KEY_COMMAND"
+                "Tip: Set GEMINI_API_KEY environment variable or configure a different command to retrieve the api key"
             )
             sys.exit(1)
 
