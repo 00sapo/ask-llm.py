@@ -6,6 +6,7 @@ Please, check if the paper is well structured, if the sections are in a logical 
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value Be concise: each word should add value.
 
 =====
+model-name: gemini-2.5-pro
 
 Please, evaluate if the paper explains clearly the experiments and gives all the information needed for reproducing them.
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value
@@ -21,6 +22,7 @@ Pay special importance to:
 - proper separation, including cross-validation with relevant groups for stratified or leave-groups-out validation
 - control groups and/or baseline comparison
 - correct interpretation of results
+- correctness of mathematical formulas, proofs, and algorithms
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value
 
 =====
@@ -47,6 +49,7 @@ Please, look for grammar and syntactic errors in this paper.
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value
 
 =====
+model-name: gemini-2.5-flash
 
 Please, check if the paper is well written, if the language is clear and concise, and if it follows the conventions of scientific writing. Look for any spelling or grammatical errors, and check if the paper uses appropriate terminology and style.
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value
