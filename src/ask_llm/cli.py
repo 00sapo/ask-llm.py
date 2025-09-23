@@ -42,9 +42,9 @@ def process(
         help="Resume from default state file (ask_llm_state.json)",
     ),
     query_file: Optional[Path] = typer.Option(
-        None,
+        "query.md",
         "--query-file",
-        help="Override query file (default: query.md)",
+        help="Override query file",
     ),
     report: Optional[Path] = typer.Option(
         None,
@@ -67,14 +67,14 @@ def process(
         help="Override Gemini API key (default: from GEMINI_API_KEY env var)",
     ),
     api_key_command: Optional[str] = typer.Option(
-        None,
+        "rbw get gemini_api_key",
         "--api-key-command",
-        help="Override command to retrieve API key (default: rbw get gemini_key)",
+        help="Override command to retrieve API key",
     ),
     base_url: Optional[str] = typer.Option(
-        None,
+        "https://generativelanguage.googleapis.com/v1beta",
         "--base-url",
-        help="Override Gemini API base URL (default: https://generativelanguage.googleapis.com/v1beta)",
+        help="Override Gemini API base URL",
     ),
     verbose: bool = typer.Option(
         False,
@@ -467,7 +467,7 @@ def fulltext(
     api_key_command: Optional[str] = typer.Option(
         None,
         "--api-key-command",
-        help="Override command to retrieve API key (default: rbw get gemini_key)",
+        help="Use a command to retrieve API key",
     ),
 ) -> None:
     """Search for and download PDFs from BibTeX entries, updating the BibTeX files with URLs and file paths.

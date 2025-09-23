@@ -18,8 +18,7 @@ Pay special importance to:
 - datasets selection and description
 - imbalance in datasets
 - proper evaluation metrics
-- proper separation, including cross-validation with relevant groups for stratified or
-  leave-groups-out validation
+- proper separation, including cross-validation with relevant groups for stratified or leave-groups-out validation
 - control groups and/or baseline comparison
 - correct interpretation of results
 Be critical. Be concise. Your review must be short and should follow the style of each-word-add-value
