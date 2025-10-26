@@ -10,9 +10,9 @@ from .config import ConfigManager, QueryConfig
 
 
 class GeminiAPIClient:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, **config_overrides):
         self.verbose = verbose
-        self.config = ConfigManager(verbose=verbose)
+        self.config = ConfigManager(verbose=verbose, **config_overrides)
         self.api_key = self.config.get_api_key()
         self.base_url = self.config.settings.base_url
         self.default_model = "gemini-2.5-flash"

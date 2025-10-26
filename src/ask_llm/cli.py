@@ -67,9 +67,9 @@ def process(
         help="Override Gemini API key (default: from GEMINI_API_KEY env var)",
     ),
     api_key_command: Optional[str] = typer.Option(
-        "rbw get gemini_api_key",
+        None,
         "--api-key-command",
-        help="Override command to retrieve API key",
+        help="Command to retrieve API key (when GEMINI_API_KEY env var is not set)",
     ),
     base_url: Optional[str] = typer.Option(
         "https://generativelanguage.googleapis.com/v1beta",
@@ -467,7 +467,7 @@ def fulltext(
     api_key_command: Optional[str] = typer.Option(
         None,
         "--api-key-command",
-        help="Use a command to retrieve API key",
+        help="Command to retrieve API key (when GEMINI_API_KEY env var is not set)",
     ),
 ) -> None:
     """Search for and download PDFs from BibTeX entries, updating the BibTeX files with URLs and file paths.
@@ -505,7 +505,7 @@ def fulltext(
         from .url_resolver import URLResolver
         from .search_strategy import FallbackSearchStrategy
 
-        # Initialize components
+        # Initialize components with config overrides
         config_overrides = {}
         if api_key:
             config_overrides["api_key"] = api_key
@@ -513,20 +513,9 @@ def fulltext(
             config_overrides["api_key_command"] = api_key_command
 
         bibtex_processor = BibtexProcessor(verbose=verbose)
-        api_client = GeminiAPIClient(verbose=verbose)
+        api_client = GeminiAPIClient(verbose=verbose, **config_overrides)
         pdf_downloader = PDFDownloader(verbose=verbose)
         url_resolver = URLResolver(verbose=verbose)
-
-        # Override API client config if provided
-        if api_key:
-            api_client.api_key = api_key
-        if api_key_command:
-            # Would need to re-initialize, but for simplicity we'll just warn
-            if verbose:
-                console.print(
-                    "[DEBUG] API key command override not applied to existing client",
-                    style="dim",
-                )
 
         # Initialize search strategy
         search_strategy = FallbackSearchStrategy(

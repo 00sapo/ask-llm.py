@@ -23,20 +23,21 @@ class QueryConfig(BaseModel):
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
-    api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
-    api_key_command: Optional[str] = Field(None, env="GEMINI_API_KEY_COMMAND")
+    api_key: Optional[str] = Field(None, alias="gemini_api_key")
+    api_key_command: Optional[str] = Field(None, alias="gemini_api_key_command")
     base_url: str = Field(
-        "https://generativelanguage.googleapis.com/v1beta", env="GEMINI_BASE_URL"
+        "https://generativelanguage.googleapis.com/v1beta", alias="gemini_base_url"
     )
-    query_file: str = Field("query.md", env="QUERY_FILE")
-    report_file: str = Field("analysis_report.json", env="REPORT_FILE")
-    log_file: str = Field("log.txt", env="LOG_FILE")
-    processed_list: str = Field("processed_files.txt", env="PROCESSED_LIST")
-    verbose: bool = Field(False, env="VERBOSE")
+    query_file: str = Field("query.md", alias="query_file")
+    report_file: str = Field("analysis_report.json", alias="report_file")
+    log_file: str = Field("log.txt", alias="log_file")
+    processed_list: str = Field("processed_files.txt", alias="processed_list")
+    verbose: bool = Field(False, alias="verbose")
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        populate_by_name = True
 
 
 class ConfigManager:
@@ -49,9 +50,7 @@ class ConfigManager:
         api_key_command=None,
     ):
         self.verbose = verbose
-        self.settings = Settings(verbose=verbose)
-        # just to work for now
-        api_key_command = "rbw get gemini_api_key"
+        self.settings = Settings()
 
         # Apply overrides before loading queries
         if query_file:
@@ -69,6 +68,19 @@ class ConfigManager:
             if self.verbose:
                 print("[DEBUG] Using API key from environment variable")
             return self.settings.api_key
+
+        # Check if api_key_command was explicitly provided
+        if not self.settings.api_key_command:
+            print("Error: No API key available")
+            print("Please either:")
+            print("  1. Set GEMINI_API_KEY environment variable, or")
+            print("  2. Use --api-key-command to specify a command to retrieve the API key")
+            print("")
+            print("Example:")
+            print("  export GEMINI_API_KEY=your_api_key_here")
+            print("  # or")
+            print("  ask-llm --api-key-command 'your_command_here' ...")
+            sys.exit(1)
 
         if self.verbose:
             print(
@@ -91,7 +103,18 @@ class ConfigManager:
             if e.stderr:
                 print(f"Error output: {e.stderr}")
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure a command to retrieve the api key"
+                "Tip: Set GEMINI_API_KEY environment variable or configure a working command to retrieve the api key"
+            )
+            sys.exit(1)
+        except FileNotFoundError:
+            command_name = (
+                self.settings.api_key_command.split()[0]
+                if self.settings.api_key_command
+                else "command"
+            )
+            print(f"Error: Command not found: {command_name}")
+            print(
+                "Tip: Set GEMINI_API_KEY environment variable or configure a different command to retrieve the api key"
             )
             sys.exit(1)
         except FileNotFoundError:

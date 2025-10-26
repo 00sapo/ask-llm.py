@@ -25,7 +25,7 @@ class DocumentAnalyzer:
         # Initialize core components with config overrides
         self.config = ConfigManager(verbose=verbose, **config_overrides)
         self.bibtex_processor = BibtexProcessor(verbose=verbose)
-        self.api_client = GeminiAPIClient(verbose=verbose)
+        self.api_client = GeminiAPIClient(verbose=verbose, **config_overrides)
         self.report_manager = ReportManager(verbose=verbose)
 
         # Initialize specialized components
