@@ -1,17 +1,41 @@
 semantic-scholar: true
 fields-of-study: Computer Science
-limit: 200
+limit: 30
 relevance-search: true
 
-trocr + ( historical | medieval ) + ( transcription | recognition )
+trocr historical ocr
 
 ===
 semantic-scholar: true
 fields-of-study: Computer Science
-limit: 200
+limit: 30
 relevance-search: true
 
-( trocr | transformers | attention ) + ( inspection | explainability )
+trocr medieval text transcription
+
+===
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
+
+ocr attention analysis
+
+===
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
+
+ocr transformer explainability
+
+===
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
+
+trocr explainability
 
 ===
 model-name: gemini-2.5-flash
@@ -70,11 +94,8 @@ Answer to the following questions:
 
 - How do the authors use transformers for doing OCR?
 - How do the authors inspect the model?
-- Which kind of analysis do the authors use for inspecting the model and how does it work? 
+- Which kind of analysis do the authors use for inspecting the model and how does it work?
 - What are the takeaways of this paper?
-- Does the model use the READ 2016 dataset?
-- What are the best CER and WER obtained on the READ 2016 dataset?
-- How confident are you in your answer? Consider the availability of the PDF and the correspondence between the PDF (if any) and the metadata (0-1).
 
 ```json
 {
@@ -82,37 +103,19 @@ Answer to the following questions:
   "properties": {
     "transformers": {
       "type": "string",
-      "description": "How transformers are used for OCR (2 sentences max)",
+      "description": "How transformers are used for OCR (2 sentences max)"
     },
     "inspection": {
       "type": "string",
-      "description": "How the model is inspected (2 sentences max)",
+      "description": "How the model is inspected (2 sentences max)"
     },
     "analysis": {
       "type": "string",
-      "description": "Description of the analysis methodology (2 sentences max)",
+      "description": "Description of the analysis methodology (2 sentences max)"
     },
     "takeaways": {
       "type": "string",
       "description": "The key takeaways of these paper (1 sentence)"
-    },
-    "read2016":{
-      "type": "boolean",
-      "description": "Does the paper use READ2016 for testing the models?"
-    },
-    "wer":{
-      "type": "number",
-      "description": "The WER on the READ 2016 test set"
-      "minimum": 0,
-      "maximum": 1,
-      "format": "float"
-    },
-    "cer":{
-      "type": "number",
-      "description": "The CER on the READ 2016 test set"
-      "minimum": 0,
-      "maximum": 1,
-      "format": "float"
     },
     "certainty": {
       "type": "number",
@@ -126,9 +129,6 @@ Answer to the following questions:
     "inspection",
     "analysis",
     "takeaways",
-    "read2016",
-    "wer",
-    "cer",
     "certainty"
   ]
 }
