@@ -34,3 +34,4 @@ qwant_search_cache.sqlite
 ask_llm_downloads
 src/ask_llm/search_engines/__pycache__
 workspace
+prompt.md
