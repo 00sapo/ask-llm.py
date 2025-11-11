@@ -50,7 +50,7 @@ Is this paper using visual transformers/attention for OCR?
   "properties": {
     "relevance": {
       "type": "boolean",
-      "description": "Indicates whether the paper is using visual transformer/attention for OCR."
+      "description": "Indicates whether the paper is using vision transformer/attention for OCR."
     }
   },
   "required": [
@@ -66,9 +66,7 @@ model-name: gemini-2.5-flash
 temperature: 0.0
 google-search: false
 
-Is this paper relevant for the "Related Works" section of a conference/journal paper entitled "Is
-this paper describing any practical algorithm for computing the similarity between music excerpts or
-texts in the context of music?", where trOCR is applied to medieval Italian manuscripts?
+Is this paper relevant for the "Related Works" section of a conference/journal paper entitled "Understanding Transformer-Based OCR for Medieval Manuscripts: A Systematic Ablation Study and Attention Analysis", where trOCR is applied to medieval Italian manuscripts?
 
 ```json
 {
