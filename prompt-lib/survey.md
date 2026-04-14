@@ -11,7 +11,7 @@ semantic-scholar: true
 ===
 model-name: gemini-2.5-flash
 temperature: 0.0
-google-search: false
+web-search: false
 
 Is this paper describing any practical algorithm for computing the similarity between music excerpts or texts in the context of music?
 

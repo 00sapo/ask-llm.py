@@ -1,11 +1,11 @@
-"""Ask LLM - Process documents using Gemini API."""
+"""Ask LLM - Process documents using provider-agnostic LLM APIs."""
 
 __version__ = "1.0.0"
 
 from .analyzer import DocumentAnalyzer
 from .config import ConfigManager
 from .bibtex import BibtexProcessor
-from .api import GeminiAPIClient
+from .api import LLMAPIClient, GeminiAPIClient
 from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
 from .document_processor import DocumentProcessor
@@ -14,7 +14,6 @@ from .url_resolver import URLResolver
 from .pdf_search import PDFDownloader
 from .search_strategy import (
     SearchStrategy,
-    GoogleGroundingStrategy,
     QwantSearchStrategy,
 )
 
@@ -22,6 +21,7 @@ __all__ = [
     "DocumentAnalyzer",
     "ConfigManager",
     "BibtexProcessor",
+    "LLMAPIClient",
     "GeminiAPIClient",
     "ReportManager",
     "SemanticScholarClient",
@@ -30,6 +30,5 @@ __all__ = [
     "URLResolver",
     "PDFDownloader",
     "SearchStrategy",
-    "GoogleGroundingStrategy",
     "QwantSearchStrategy",
 ]

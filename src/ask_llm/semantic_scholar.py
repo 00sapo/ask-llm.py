@@ -4,6 +4,7 @@ import requests
 import requests_cache
 import json
 import time
+import os
 from typing import Dict, Any, List
 
 
@@ -19,6 +20,13 @@ class SemanticScholarClient:
             match_headers=True,
         )
         self.session.headers.update({"Content-Type": "application/json"})
+
+        self.semantic_scholar_api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+        if self.semantic_scholar_api_key:
+            if self.verbose:
+                print(
+                    "[DEBUG] Using SEMANTIC_SCHOLAR_API_KEY for authenticated requests"
+                )
 
         if self.verbose:
             print(
@@ -46,7 +54,8 @@ class SemanticScholarClient:
             params["offset"] = 0
             params["limit"] = 100
         else:
-            params["q"] = query  # Use 'q' for bulk search (bug in the API?)
+            # Swagger docs for /paper/search/bulk require the `query` parameter.
+            params["query"] = query
             params["sort"] = "citationCount:desc"
 
         # Apply user-specified parameters
@@ -64,42 +73,58 @@ class SemanticScholarClient:
             if self.verbose:
                 print(f"[DEBUG] Making request to: {url} with params: {params}")
 
-            # Implement retry logic for 429 errors with exponential backoff
-            max_retries = 5
-            wait_times = [30, 60, 120, 180, 300]  # 30s, 1m, 2m, 3m, 5m
+            def request_with_retry(use_api_key: bool):
+                max_retries = 5
+                wait_times = [5, 10, 20, 30, 60]
+                headers = {"Content-Type": "application/json"}
+                if use_api_key and self.semantic_scholar_api_key:
+                    headers["x-api-key"] = self.semantic_scholar_api_key
 
-            for attempt in range(max_retries + 1):
-                try:
-                    response = self.session.get(url, params=params, timeout=30)
+                for attempt in range(max_retries + 1):
+                    try:
+                        local_response = self.session.get(
+                            url, params=params, headers=headers, timeout=30
+                        )
 
-                    if response.status_code == 429:
-                        if attempt < max_retries:
-                            wait_time = wait_times[attempt]
-                            if self.verbose:
-                                print(
-                                    f"[DEBUG] Rate limited (429), waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
-                                )
-                            time.sleep(wait_time)
-                            continue
-                        else:
+                        if local_response.status_code == 429:
+                            if attempt < max_retries:
+                                retry_after = local_response.headers.get("Retry-After")
+                                wait_time = wait_times[attempt]
+                                if retry_after and retry_after.isdigit():
+                                    wait_time = int(retry_after)
+                                if self.verbose:
+                                    print(
+                                        f"[DEBUG] Rate limited (429), waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
+                                    )
+                                time.sleep(wait_time)
+                                continue
                             raise requests.exceptions.HTTPError(
                                 f"Rate limited after {max_retries} retries"
                             )
 
-                    # If we get here, the request succeeded or failed with a non-429 error
-                    break
+                        return local_response
 
-                except requests.exceptions.RequestException as e:
-                    if attempt < max_retries and "429" in str(e):
-                        wait_time = wait_times[attempt]
-                        if self.verbose:
-                            print(
-                                f"[DEBUG] Request failed with rate limit, waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
-                            )
-                        time.sleep(wait_time)
-                        continue
-                    else:
+                    except requests.exceptions.RequestException as e:
+                        if attempt < max_retries and "429" in str(e):
+                            wait_time = wait_times[attempt]
+                            if self.verbose:
+                                print(
+                                    f"[DEBUG] Request failed with rate limit, waiting {wait_time} seconds before retry {attempt + 1}/{max_retries}"
+                                )
+                            time.sleep(wait_time)
+                            continue
                         raise
+
+            response = request_with_retry(
+                use_api_key=bool(self.semantic_scholar_api_key)
+            )
+
+            if response.status_code == 403 and self.semantic_scholar_api_key:
+                if self.verbose:
+                    print(
+                        "[DEBUG] Semantic Scholar returned 403 with API key, retrying without API key"
+                    )
+                response = request_with_retry(use_api_key=False)
 
             if self.verbose:
                 print(f"[DEBUG] Response status: {response.status_code}")

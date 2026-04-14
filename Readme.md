@@ -33,7 +33,7 @@ ask-llm [OPTIONS] [PDF|BIB]...
 
 ## DESCRIPTION
 
-**ask-llm** analyzes PDF documents, BibTeX bibliographies, search on Semantic Scholar, and retrieves PDFs from the web. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include Gemini LLM for text analysis and generation, Semantic Scholar integration for paper discovery, Google Search for grounding and PDF retrieval, Qwant for PDF retrieval.
+**ask-llm** analyzes PDF documents, BibTeX bibliographies, search on Semantic Scholar, and retrieves PDFs from the web. It processes files based on custom queries (defined in `query.md`), supports structured JSON/CSV outputs, and can use BibTeX metadata if PDFs are missing. Key features include provider-agnostic LLM generation via LiteLLM, Semantic Scholar integration for paper discovery, and Qwant web search for grounding and PDF retrieval.
 
 ### Things you can do with **ask-llm**
 
@@ -47,7 +47,7 @@ ask-llm [OPTIONS] [PDF|BIB]...
 - use the output of queries (i.e. JSON output) as input to further queries
 - use the output JSON to build a discursive report/paper
 
-### Some data
+### Some data [old]
 
 In my experiments (see `prompt-lib/` for examples), I found the following:
 
@@ -78,7 +78,7 @@ Ensure `pipx` is installed ([official guide](https://pipx.pypa.io/stable/install
 ## REQUIREMENTS
 
 - **Python:** Python 3.8 or newer.
-- **Gemini API Key:** An active API key for Google's Gemini LLM.
+- **LLM API Key:** A provider API key supported by your chosen LiteLLM model (for example OpenAI, Anthropic, or Gemini).
 
 ---
 
@@ -146,9 +146,9 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
 
 - **`query.md`** (default, or specify with `--query-file`)
   Defines queries to run on each document. Queries are separated by three or more equals signs (`===`). Each query section includes the prompt text and can specify parameters:
-  - `Model-Name: <model_identifier>` (e.g., `gemini-1.5-pro-latest`)
+  - `Model-Name: <model_identifier>` (e.g., `openai/gpt-4o-mini`, `anthropic/claude-3-5-sonnet-20241022`, `gemini/gemini-2.5-flash`)
   - `Temperature: <float_value>` (e.g., `0.7`)
-  - `Google-Search: <true|false>` (enables Google Search grounding for the LLM)
+  - `Web-Search: <true|false>` (enables LLM-planned Qwant search grounding for the final answer)
   - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search) for advanced syntax. PDFs for found papers are searched using DuckDuckGo if not directly available from Semantic Scholar.)
     - Additional Semantic Scholar parameters (e.g., `Sort: citationCount:desc`, `Fields-of-study: Computer Science`) can be included.
     - `relevance-search=true` enables the use of the sorting by relevance (limited to the first 100 results) and of the Semantic Scholar's retrieval score (i.e., the same used in the web interface).
@@ -163,9 +163,9 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   Basic `query.md` structure:
 
   ```markdown
-  Model-Name: gemini-1.5-flash-latest
+  Model-Name: gemini/gemini-2.5-flash
   Temperature: 0.7
-  Google-Search: true
+  Web-Search: true
   ```json
   {
     "type": "object",
@@ -212,7 +212,6 @@ development environment. This allows you to test changes without needing to rein
 
 ## TODO
 
-- Support other models via litellm
 - Pass output of previous queries to subsequent queries
 
 ---

@@ -5,17 +5,18 @@ import base64
 import sys
 import os
 
-from .api import GeminiAPIClient
+from .api import LLMAPIClient
 from .bibtex import BibtexProcessor
 from .pdf_search import PDFDownloader
 from .search_strategy import FallbackSearchStrategy
+from .search_engines import QwantEngine
 from .url_resolver import URLResolver
 
 
 class DocumentProcessor:
     def __init__(
         self,
-        api_client: GeminiAPIClient,
+        api_client: LLMAPIClient,
         bibtex_processor: BibtexProcessor,
         pdf_downloader: PDFDownloader,
         verbose=False,
@@ -26,15 +27,59 @@ class DocumentProcessor:
         self.verbose = verbose
         self.downloaded_pdfs = []  # Track downloaded PDF files for cleanup
 
-        # Initialize fallback search strategy (Google grounding with Qwant fallback)
+        # Initialize Qwant strategy for PDF discovery
         url_resolver = URLResolver(verbose=verbose)
         self.search_strategy = FallbackSearchStrategy(
             self.api_client, url_resolver, self.pdf_downloader, verbose=verbose
         )
+        self.web_search_engine = QwantEngine(verbose=verbose)
         if self.verbose:
-            print(
-                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)"
+            print("[DEBUG] Using Qwant strategy for PDF discovery")
+
+    def _build_web_context(self, query_text, metadata, query_info):
+        """Build a grounded web context using Qwant and LLM-generated search queries."""
+        search_queries = self.api_client.generate_search_queries(
+            query_text, metadata, query_info, max_queries=5
+        )
+
+        if not search_queries:
+            return "", {"engine": "qwant", "search_queries": [], "results": []}
+
+        all_results = []
+        for search_query in search_queries:
+            results = self.web_search_engine.search_web(search_query, count=5)
+            all_results.extend(results)
+
+        if not all_results:
+            return (
+                "",
+                {
+                    "engine": "qwant",
+                    "search_queries": search_queries,
+                    "results": [],
+                },
             )
+
+        max_results = 15
+        context_lines = [
+            "Web search evidence (Qwant). Use this context when helpful and cite URLs explicitly in your answer:",
+        ]
+
+        for idx, result in enumerate(all_results[:max_results], 1):
+            title = result.get("title", "")
+            snippet = result.get("snippet", "")
+            url = result.get("url", "")
+            source_query = result.get("query", "")
+            context_lines.append(
+                f"[{idx}] Query: {source_query}\nTitle: {title}\nSnippet: {snippet}\nURL: {url}"
+            )
+
+        metadata_payload = {
+            "engine": "qwant",
+            "search_queries": search_queries,
+            "results": all_results[:max_results],
+        }
+        return "\n\n".join(context_lines), metadata_payload
 
     def _is_url(self, path: str) -> bool:
         """Check if the given path is a URL"""
@@ -96,7 +141,7 @@ class DocumentProcessor:
             print(f"🔍 Searching for PDF: {title}")
 
         try:
-            # Use fallback strategy to discover URLs and get both path and original URL
+            # Use configured strategy to discover URLs and get path plus original URL
             result = self.search_strategy.discover_urls_with_source(
                 metadata, query_text or "", response_data or {}
             )
@@ -325,6 +370,20 @@ class DocumentProcessor:
 
                 payload = self.api_client.create_text_payload(query_text)
 
+            grounding_metadata = None
+            if query_info.params.get("web_search", False):
+                web_context, grounding_metadata = self._build_web_context(
+                    query_info.text, metadata or {}, query_info
+                )
+                if web_context:
+                    query_text = f"{query_text}\n\n{web_context}"
+                    if pdf_data:
+                        payload = self.api_client.create_pdf_payload(
+                            encoded_pdf, query_text
+                        )
+                    else:
+                        payload = self.api_client.create_text_payload(query_text)
+
             # Apply query parameters to payload
             payload = self.api_client.apply_query_params(payload, query_info)
 
@@ -341,49 +400,12 @@ class DocumentProcessor:
                     f.write("\n\n")
 
                 # Extract and process response
-                response_content, grounding_metadata = self.api_client.extract_response(
+                response_content, extracted_metadata = self.api_client.extract_response(
                     response_data
                 )
 
-                # If no PDF found yet, try to discover URLs from grounding metadata
-                if (
-                    not pdf_data
-                    and query_info.params.get("google_search", False)
-                    and grounding_metadata
-                ):
-                    discovered_result = self.search_strategy.discover_urls_with_source(
-                        metadata or {}, query_text, response_data
-                    )
-
-                    if discovered_result and not actual_path:
-                        # Download first discovered PDF
-                        downloaded_path, original_url = discovered_result
-                        if downloaded_path and os.path.exists(downloaded_path):
-                            actual_path = downloaded_path
-                            pdf_source = "searched_download"
-                            pdf_url = original_url
-                            document_data["file_path"] = downloaded_path
-                            document_data["pdf_source"] = pdf_source
-                            document_data["pdf_url"] = pdf_url
-                            # Track for cleanup
-                            self.downloaded_pdfs.append(downloaded_path)
-
-                            # Try to read the downloaded PDF for subsequent queries
-                            try:
-                                with open(actual_path, "rb") as f:
-                                    pdf_data = f.read()
-                                    if pdf_data:
-                                        encoded_pdf = base64.b64encode(pdf_data).decode(
-                                            "utf-8"
-                                        )
-                                        document_data["is_metadata_only"] = False
-                                        if self.verbose:
-                                            print(
-                                                f"[DEBUG] Downloaded and loaded PDF from Google grounding: {downloaded_path} from URL: {pdf_url}"
-                                            )
-                            except Exception as e:
-                                if self.verbose:
-                                    print(f"[DEBUG] Could not read downloaded PDF: {e}")
+                if grounding_metadata is None:
+                    grounding_metadata = extracted_metadata
 
                 if self.verbose:
                     print(

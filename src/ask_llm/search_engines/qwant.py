@@ -68,6 +68,67 @@ class QwantEngine(SearchEngine):
 
         return self._search_qwant_urls(search_query)
 
+    def search_web(self, query: str, count: int = 5) -> List[dict]:
+        """Search Qwant web and return structured results."""
+        self._rate_limit()
+
+        if self.verbose:
+            print(f"[DEBUG] Searching Qwant web with query: {query}")
+
+        try:
+            devices = ["desktop", "smartphone", "tablet"]
+            device = random.choice(devices)
+            params = {
+                "q": query,
+                "count": max(1, min(count, 10)),
+                "locale": "en_gb",
+                "offset": 0,
+                "device": device,
+                "tgp": 2,
+                "safesearch": 1,
+                "displayed": False,
+                "llm": False,
+            }
+
+            url = "https://api.qwant.com/v3/search/web"
+            headers = self._get_headers()
+            response = self.session.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("status") != "success":
+                return []
+
+            result_data = data.get("data", {}).get("result", {})
+            items_data = result_data.get("items", {})
+            mainline = items_data.get("mainline", [])
+
+            web_results = []
+            for item in mainline:
+                if item.get("type") == "web":
+                    web_results = item.get("items", [])
+                    break
+
+            normalized = []
+            for result in web_results:
+                url_result = result.get("url", "")
+                if not url_result:
+                    continue
+                normalized.append(
+                    {
+                        "query": query,
+                        "title": result.get("title", "") or result.get("desc", ""),
+                        "snippet": result.get("desc", ""),
+                        "url": url_result,
+                    }
+                )
+            return normalized
+
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] Qwant web search error: {e}")
+            return []
+
     def _rate_limit(self):
         """Apply rate limiting between searches"""
         current_time = time.time()

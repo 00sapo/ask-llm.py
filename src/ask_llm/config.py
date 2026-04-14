@@ -3,6 +3,8 @@
 import json
 import re
 import sys
+import os
+import shlex
 import subprocess
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -23,11 +25,10 @@ class QueryConfig(BaseModel):
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
-    api_key: Optional[str] = Field(None, alias="gemini_api_key")
-    api_key_command: Optional[str] = Field(None, alias="gemini_api_key_command")
-    base_url: str = Field(
-        "https://generativelanguage.googleapis.com/v1beta", alias="gemini_base_url"
-    )
+    api_key: Optional[str] = Field(None, alias="llm_api_key")
+    api_key_command: Optional[str] = Field(None, alias="llm_api_key_command")
+    base_url: Optional[str] = Field(None, alias="llm_base_url")
+    default_model: str = Field("deepseek/deepseek-chat", alias="llm_model")
     query_file: str = Field("query.md", alias="query_file")
     report_file: str = Field("analysis_report.json", alias="report_file")
     log_file: str = Field("log.txt", alias="log_file")
@@ -52,6 +53,14 @@ class ConfigManager:
         self.verbose = verbose
         self.settings = Settings()
 
+        # Backwards-compatible environment fallback
+        if not self.settings.api_key:
+            self.settings.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.settings.api_key_command:
+            self.settings.api_key_command = os.getenv("GEMINI_API_KEY_COMMAND")
+        if not self.settings.base_url:
+            self.settings.base_url = os.getenv("GEMINI_BASE_URL")
+
         # Apply overrides before loading queries
         if query_file:
             self.settings.query_file = query_file
@@ -62,33 +71,69 @@ class ConfigManager:
         if api_key_command:
             self.settings.api_key_command = api_key_command
 
-    def get_api_key(self) -> str:
-        """Get API key from environment or custom command"""
+    def _provider_from_model(self) -> str:
+        model = (self.settings.default_model or "").lower()
+        if "/" in model:
+            return model.split("/", 1)[0]
+        if model.startswith("deepseek"):
+            return "deepseek"
+        if model.startswith("gpt"):
+            return "openai"
+        if model.startswith("claude"):
+            return "anthropic"
+        if model.startswith("gemini") or model.startswith("gemma"):
+            return "gemini"
+        return ""
+
+    def _provider_api_env_keys(self) -> List[str]:
+        provider = self._provider_from_model()
+        provider_map = {
+            "deepseek": ["DEEPSEEK_API_KEY"],
+            "openai": ["OPENAI_API_KEY"],
+            "anthropic": ["ANTHROPIC_API_KEY"],
+            "gemini": ["GEMINI_API_KEY"],
+        }
+        env_keys = ["LLM_API_KEY"]
+        env_keys.extend(provider_map.get(provider, []))
+        return env_keys
+
+    def get_api_key(self) -> Optional[str]:
+        """Get API key using priority: env -> --api-key -> --api-key-command -> default command."""
+        for env_key in self._provider_api_env_keys():
+            env_value = os.getenv(env_key)
+            if env_value:
+                if self.verbose:
+                    print(f"[DEBUG] Using API key from environment variable: {env_key}")
+                return env_value
+
         if self.settings.api_key:
             if self.verbose:
-                print("[DEBUG] Using API key from environment variable")
+                print("[DEBUG] Using API key from --api-key override")
             return self.settings.api_key
 
         # Check if api_key_command was explicitly provided
         if not self.settings.api_key_command:
-            print("Error: No API key available")
-            print("Please either:")
-            print("  1. Set GEMINI_API_KEY environment variable, or")
-            print("  2. Use --api-key-command to specify a command to retrieve the API key")
-            print("")
-            print("Example:")
-            print("  export GEMINI_API_KEY=your_api_key_here")
-            print("  # or")
-            print("  ask-llm --api-key-command 'your_command_here' ...")
-            sys.exit(1)
+            # DeepSeek default retrieval command
+            if self.settings.default_model.startswith("deepseek"):
+                self.settings.api_key_command = 'rbw get "deepseek_api_key"'
+                if self.verbose:
+                    print(
+                        f"[DEBUG] Using default API key command: {self.settings.api_key_command}"
+                    )
+            else:
+                if self.verbose:
+                    print(
+                        "[DEBUG] No API key override configured, LiteLLM will use provider environment variables"
+                    )
+                return None
 
         if self.verbose:
             print(
                 f"[DEBUG] Retrieving API key using command: {self.settings.api_key_command}"
             )
         try:
-            # Split command string into list for subprocess
-            command_parts = self.settings.api_key_command.split()
+            # Split command string safely into list for subprocess
+            command_parts = shlex.split(self.settings.api_key_command)
             result = subprocess.run(
                 command_parts, capture_output=True, text=True, check=True
             )
@@ -103,7 +148,7 @@ class ConfigManager:
             if e.stderr:
                 print(f"Error output: {e.stderr}")
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure a working command to retrieve the api key"
+                "Tip: Set LLM_API_KEY or provider-specific API key env vars, or configure a working command"
             )
             sys.exit(1)
         except FileNotFoundError:
@@ -114,7 +159,7 @@ class ConfigManager:
             )
             print(f"Error: Command not found: {command_name}")
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure a different command to retrieve the api key"
+                "Tip: Set LLM_API_KEY or provider-specific API key env vars, or configure a different command"
             )
             sys.exit(1)
         except FileNotFoundError:
@@ -128,7 +173,7 @@ class ConfigManager:
                 f"Make sure the command '{command_name}' is installed and in your PATH"
             )
             print(
-                "Tip: Set GEMINI_API_KEY environment variable or configure a different command to retrieve the api key"
+                "Tip: Set LLM_API_KEY or provider-specific API key env vars, or configure a different command"
             )
             sys.exit(1)
 
@@ -206,6 +251,7 @@ class ConfigManager:
                     for param in [
                         "model-name:",
                         "temperature:",
+                        "web-search:",
                         "google-search:",
                         "filter-on:",
                         "semantic-scholar:",
@@ -239,16 +285,21 @@ class ConfigManager:
                             )
                     elif key == "model_name":
                         current_params["model"] = value
-                    elif key == "google_search":
+                    elif key == "web_search":
                         # Parse boolean values
                         if value.lower() in ["true", "yes", "1", "on"]:
-                            current_params["google_search"] = True
+                            current_params["web_search"] = True
                         elif value.lower() in ["false", "no", "0", "off"]:
-                            current_params["google_search"] = False
+                            current_params["web_search"] = False
                         else:
                             print(
-                                f"Warning: Invalid google-search value '{value}', should be true/false"
+                                f"Warning: Invalid web-search value '{value}', should be true/false"
                             )
+                    elif key == "google_search":
+                        print(
+                            "Error: 'google-search' is no longer supported. Use 'web-search' instead."
+                        )
+                        sys.exit(1)
                     elif key == "semantic_scholar":
                         # Parse boolean values
                         if value.lower() in ["true", "yes", "1", "on"]:

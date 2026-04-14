@@ -1,6 +1,6 @@
 model-name: gemini-2.5-flash
 temperature: 1.
-google-search: false
+web-search: false
 
 Please, check if this Thesis is well-structured, if the sections are in a logical order, and with proper length. Also check the consistency of the title and the abstract with the content of the thesis: they should not be misleading nor too generic.
 Be critical and concise. Each word of your answer should add value.
@@ -38,13 +38,13 @@ Please, evaluate the completeness of the discussion of the results. Is the Thesi
 Be critical and concise. Each word of your answer should add value.
 
 =====
-google-search: true
+web-search: true
 
 Please, use google scholar to search for scholarly sources about similar topics as the thesis and check if all the relevant references are included. The SOTA section should not be comprehensive of the broad topic (unless the Thesis itself is a survey); instead, it should only cover the specific task approached in the Thesis, with some references to the broader topic.
 Be critical and concise. Each word of your answer should add value.
 
 =====
-google-search: false
+web-search: false
 
 Please, check if the Thesis is well written, if the language is clear and concise, and if it follows the conventions of scientific writing. Look for any spelling or grammatical errors, and check if the Thesis uses appropriate terminology and style.
 Be critical and concise. Each word of your answer should add value.

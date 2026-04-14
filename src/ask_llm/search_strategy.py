@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 
 from .pdf_finder import PDFFinder
-from .search_engines import GoogleGroundingEngine, QwantEngine
+from .search_engines import QwantEngine
 
 
 class SimpleURLResolver:
@@ -30,15 +30,11 @@ class SearchStrategy(ABC):
 
 
 class FallbackSearchStrategy(SearchStrategy):
-    """Strategy that tries Google grounding first, then falls back to Qwant search"""
+    """Qwant-based strategy for PDF discovery"""
 
     def __init__(self, api_client, url_resolver, pdf_downloader, verbose=False):
         super().__init__(verbose)
 
-        # Initialize both strategies with API client for verification
-        self.google_strategy = GoogleGroundingStrategy(
-            api_client, url_resolver, pdf_downloader, verbose=verbose
-        )
         self.qwant_strategy = QwantSearchStrategy(
             api_client, pdf_downloader, verbose=verbose
         )
@@ -46,23 +42,9 @@ class FallbackSearchStrategy(SearchStrategy):
     def discover_urls_with_source(
         self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
     ) -> Optional[tuple]:
-        """Try Google grounding first, then fall back to Qwant search"""
+        """Use Qwant search for PDF discovery"""
         if self.verbose:
-            print("[DEBUG] Trying Google grounding strategy first")
-
-        # Try Google grounding first
-        result = self.google_strategy.discover_urls_with_source(
-            metadata, query_text, response_data
-        )
-
-        if result:
-            if self.verbose:
-                print("[DEBUG] Google grounding found PDF")
-            return result
-
-        # Fall back to Qwant search
-        if self.verbose:
-            print("[DEBUG] Google grounding found no results, falling back to Qwant")
+            print("[DEBUG] Using Qwant strategy for PDF discovery")
 
         result = self.qwant_strategy.discover_urls_with_source(
             metadata, query_text, response_data
@@ -72,27 +54,6 @@ class FallbackSearchStrategy(SearchStrategy):
             print("[DEBUG] Qwant search found PDF")
 
         return result
-
-
-class GoogleGroundingStrategy(SearchStrategy):
-    """Strategy that uses Google grounding to discover PDFs"""
-
-    def __init__(self, api_client, url_resolver, pdf_downloader, verbose=False):
-        super().__init__(verbose)
-        self.search_engine = GoogleGroundingEngine(api_client, verbose=verbose)
-        self.pdf_finder = PDFFinder(
-            self.search_engine,
-            url_resolver,
-            pdf_downloader,
-            api_client,
-            verbose=verbose,
-        )
-
-    def discover_urls_with_source(
-        self, metadata: Dict[str, Any], query_text: str, response_data: Dict[str, Any]
-    ) -> Optional[tuple]:
-        """Make an LLM query to search for PDF URLs using Google grounding, returning path and source URL"""
-        return self.pdf_finder.find_pdf_with_source(metadata)
 
 
 class QwantSearchStrategy(SearchStrategy):

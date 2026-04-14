@@ -6,7 +6,7 @@ from datetime import datetime
 
 from .config import ConfigManager
 from .bibtex import BibtexProcessor
-from .api import GeminiAPIClient
+from .api import LLMAPIClient
 from .reports import ReportManager
 from .semantic_scholar import SemanticScholarClient
 from .pdf_search import PDFDownloader
@@ -25,7 +25,7 @@ class DocumentAnalyzer:
         # Initialize core components with config overrides
         self.config = ConfigManager(verbose=verbose, **config_overrides)
         self.bibtex_processor = BibtexProcessor(verbose=verbose)
-        self.api_client = GeminiAPIClient(verbose=verbose, **config_overrides)
+        self.api_client = LLMAPIClient(verbose=verbose, **config_overrides)
         self.report_manager = ReportManager(verbose=verbose)
 
         # Initialize specialized components
@@ -56,9 +56,7 @@ class DocumentAnalyzer:
         if self.verbose:
             print("[DEBUG] Initializing DocumentAnalyzer")
             print("[DEBUG] PDF download mode enabled")
-            print(
-                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)"
-            )
+            print("[DEBUG] Using Qwant strategy for PDF discovery")
 
         # Load configuration - now uses correct query file path
         self.queries = self.config.load_queries()
@@ -133,7 +131,7 @@ class DocumentAnalyzer:
             )
             self.csv_report_file = config.get("csv_report_file", self.csv_report_file)
 
-            # Remove qwant strategy handling (now using fallback strategy)
+            # Strategy configuration is stateless and restored from runtime defaults
 
             # Restore report data
             if "report_data" in state_data:

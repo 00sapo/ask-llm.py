@@ -13,7 +13,7 @@ from .analyzer import DocumentAnalyzer
 
 app = typer.Typer(
     name="ask-llm",
-    help="Process PDF files and BibTeX bibliographies using the Gemini API with structured output.",
+    help="Process PDF files and BibTeX bibliographies using provider-agnostic LLM APIs with structured output.",
     add_completion=False,
 )
 console = Console()
@@ -64,17 +64,17 @@ def process(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="Override Gemini API key (default: from GEMINI_API_KEY env var)",
+        help="Override API key (default: from LLM_API_KEY or provider-specific env vars)",
     ),
     api_key_command: Optional[str] = typer.Option(
         None,
         "--api-key-command",
-        help="Command to retrieve API key (when GEMINI_API_KEY env var is not set)",
+        help="Command to retrieve API key (when no API key env var is set)",
     ),
     base_url: Optional[str] = typer.Option(
-        "https://generativelanguage.googleapis.com/v1beta",
+        None,
         "--base-url",
-        help="Override Gemini API base URL",
+        help="Optional API base URL override (for OpenAI-compatible gateways and custom providers)",
     ),
     verbose: bool = typer.Option(
         False,
@@ -83,7 +83,7 @@ def process(
         help="Enable verbose debug output",
     ),
 ) -> None:
-    """Process PDF files and BibTeX bibliographies using the Gemini API.
+    """Process PDF files and BibTeX bibliographies using LiteLLM.
 
     Files are optional when using Semantic Scholar queries. You can run with just
     a query file that contains semantic-scholar: true parameters.
@@ -177,7 +177,7 @@ def process(
                 "[DEBUG] State saving enabled (ask_llm_state.json)", style="dim"
             )
             console.print(
-                "[DEBUG] Using fallback search strategy (Google grounding with Qwant fallback)",
+                "[DEBUG] Using Qwant strategy for PDF discovery",
                 style="dim",
             )
 
@@ -310,11 +310,11 @@ def process(
                                     style="dim",
                                 )
                             self.report_manager.initialize_json_structure(
-                                self.queries, "gemini-2.5-flash"
+                                self.queries, self.api_client.default_model
                             )
                     else:
                         self.report_manager.initialize_json_structure(
-                            self.queries, "gemini-2.5-flash"
+                            self.queries, self.api_client.default_model
                         )
 
             def process_files_with_state_saving(self, file_paths):
@@ -462,19 +462,19 @@ def fulltext(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="Override Gemini API key (default: from GEMINI_API_KEY env var)",
+        help="Override API key (default: from LLM_API_KEY or provider-specific env vars)",
     ),
     api_key_command: Optional[str] = typer.Option(
         None,
         "--api-key-command",
-        help="Command to retrieve API key (when GEMINI_API_KEY env var is not set)",
+        help="Command to retrieve API key (when no API key env var is set)",
     ),
 ) -> None:
     """Search for and download PDFs from BibTeX entries, updating the BibTeX files with URLs and file paths.
 
     This command processes BibTeX files to:
     1. Extract bibliographic entries
-    2. Search for PDFs using fallback strategy (Google grounding + Qwant)
+    2. Search for PDFs using Qwant strategy
     3. Download found PDFs to ask_llm_downloads directory
     4. Update BibTeX files with discovered URLs and local file paths
     """
@@ -500,7 +500,7 @@ def fulltext(
 
     try:
         from .bibtex import BibtexProcessor
-        from .api import GeminiAPIClient
+        from .api import LLMAPIClient
         from .pdf_search import PDFDownloader
         from .url_resolver import URLResolver
         from .search_strategy import FallbackSearchStrategy
@@ -513,7 +513,7 @@ def fulltext(
             config_overrides["api_key_command"] = api_key_command
 
         bibtex_processor = BibtexProcessor(verbose=verbose)
-        api_client = GeminiAPIClient(verbose=verbose, **config_overrides)
+        api_client = LLMAPIClient(verbose=verbose, **config_overrides)
         pdf_downloader = PDFDownloader(verbose=verbose)
         url_resolver = URLResolver(verbose=verbose)
 
@@ -611,7 +611,7 @@ def fulltext(
                     # Show search progress
                     console.print("   🔍 Searching for PDF...")
 
-                    # Search for PDF using the fallback strategy
+                    # Search for PDF using the configured strategy
                     try:
                         result = search_strategy.discover_urls_with_source(
                             metadata, "", {}
@@ -649,7 +649,7 @@ def fulltext(
                             console.print("   ❌ No PDF found", style="red")
                             if verbose:
                                 console.print(
-                                    f"[DEBUG] {bibtex_key}: No PDF found after trying both Google grounding and Qwant search",
+                                    f"[DEBUG] {bibtex_key}: No PDF found with Qwant search",
                                     style="dim",
                                 )
 
@@ -749,7 +749,6 @@ def clean():
 
     # Cache databases
     cache_files = [
-        "gemini_api_cache.sqlite",
         "pdf_download_cache.sqlite",
         "semantic_scholar_cache.sqlite",
         "qwant_search_cache.sqlite",

@@ -1,10 +1,3 @@
-semantic-scholar: true
-fields-of-study: Computer Science
-limit: 30
-relevance-search: true
-
-trocr historical ocr
-
 ===
 semantic-scholar: true
 fields-of-study: Computer Science
@@ -19,7 +12,7 @@ fields-of-study: Computer Science
 limit: 30
 relevance-search: true
 
-ocr attention analysis
+calamari historical ocr
 
 ===
 semantic-scholar: true
@@ -27,7 +20,7 @@ fields-of-study: Computer Science
 limit: 30
 relevance-search: true
 
-ocr transformer explainability
+kraken historical ocr
 
 ===
 semantic-scholar: true
@@ -35,40 +28,51 @@ fields-of-study: Computer Science
 limit: 30
 relevance-search: true
 
-trocr explainability
+detr historical manuscript
 
 ===
-model-name: gemini-2.5-flash
-temperature: 0.0
-google-search: false
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
 
-Is this paper using visual transformers/attention for OCR?
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "relevance": {
-      "type": "boolean",
-      "description": "Indicates whether the paper is using visual transformer/attention for OCR."
-    }
-  },
-  "required": [
-    "relevance"
-  ]
-}
-```
-
-filter-on: relevance
+yolo historical manuscript
 
 ===
-model-name: gemini-2.5-flash
-temperature: 0.0
-google-search: false
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
 
-Is this paper relevant for the "Related Works" section of a conference/journal paper entitled "Is
-this paper describing any practical algorithm for computing the similarity between music excerpts or
-texts in the context of music?", where trOCR is applied to medieval Italian manuscripts?
+htr for music transcription
+
+===
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
+
+ocr for omr
+
+===
+semantic-scholar: true
+fields-of-study: Computer Science
+limit: 30
+relevance-search: true
+
+handwritten music recognition manuscript
+
+===
+model-name: deepseek-reasoner
+temperature: 0.0
+web-search: false
+
+Is this paper relevant for the "Related Works" section of a conference/journal paper with these
+contributions:
+1. using HTR and layout recognition models in music-text medieval manuscripts
+2. standardize evaluation protocols (5-fold cross-validation, held-out, cross-manuscript, synthetic
+   pretraining, sequential learning)
+3. Doing both HTR and HMR
 
 ```json
 {
@@ -88,13 +92,14 @@ texts in the context of music?", where trOCR is applied to medieval Italian manu
 filter-on: relevance
 
 ===
-model-name: gemini-2.5-pro
+model-name: deepseek-chat
 
 Answer to the following questions:
 
-- How do the authors use transformers for doing OCR?
-- How do the authors inspect the model?
-- Which kind of analysis do the authors use for inspecting the model and how does it work?
+- How do the authors do OCR/OMR?
+- What are the dataset splits used by the paper (e.g. held-out, 5-fold cross-validation, sequential
+learning, cross-manuscript validation, etc.)?
+- What was the content of the dataset? Add the dataset's name.
 - What are the takeaways of this paper?
 
 ```json
@@ -103,15 +108,15 @@ Answer to the following questions:
   "properties": {
     "transformers": {
       "type": "string",
-      "description": "How transformers are used for OCR (2 sentences max)"
+      "description": "How do the authors do OCR/OMR (2 sentences max)"
     },
     "inspection": {
       "type": "string",
-      "description": "How the model is inspected (2 sentences max)"
+      "description": "What are the dataset splits (1 sentences max)"
     },
     "analysis": {
       "type": "string",
-      "description": "Description of the analysis methodology (2 sentences max)"
+      "description": "Dataset content and name (1 sentences max)"
     },
     "takeaways": {
       "type": "string",
@@ -119,7 +124,7 @@ Answer to the following questions:
     },
     "certainty": {
       "type": "number",
-      "description": "Confidence in the answer, between 0 and 1",
+      "description": "Confidence in the answers, between 0 and 1",
       "minimum": 0,
       "maximum": 1,
       "format": "float"
@@ -135,7 +140,7 @@ Answer to the following questions:
 ```
 
 ===
-model-name: gemini-2.5-flash
+model-name: deepseek-chat
 
 Create a concise, dense, and concrete summary of the paper. 3 sentences max.
 
