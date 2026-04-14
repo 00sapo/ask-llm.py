@@ -3,6 +3,7 @@
 import re
 import time
 import random
+import json
 from typing import List, Optional
 from urllib.parse import urlencode, urljoin
 import requests_cache
@@ -86,15 +87,15 @@ class QwantEngine(SearchEngine):
                 "device": device,
                 "tgp": 2,
                 "safesearch": 1,
-                "displayed": False,
-                "llm": False,
+                "displayed": "false",
+                "llm": "false",
             }
 
             url = "https://api.qwant.com/v3/search/web"
             headers = self._get_headers()
-            response = self.session.get(url, params=params, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+            data = self._request_json(url, params, headers)
+            if not data:
+                return []
 
             if data.get("status") != "success":
                 return []
@@ -170,8 +171,8 @@ class QwantEngine(SearchEngine):
                 "device": device,
                 "tgp": 2,
                 "safesearch": 1,
-                "displayed": False,
-                "llm": False,
+                "displayed": "false",
+                "llm": "false",
             }
 
             url = "https://api.qwant.com/v3/search/web"
@@ -186,10 +187,9 @@ class QwantEngine(SearchEngine):
                     f"Making request to Qwant API, corresponding curl: {curl_command}"
                 )
 
-            response = self.session.get(url, params=params, headers=headers, timeout=30)
-            response.raise_for_status()
-
-            data = response.json()
+            data = self._request_json(url, params, headers)
+            if not data:
+                return []
 
             if self.verbose:
                 print(f"[DEBUG] Response status: {data.get('status', 'unknown')}")
@@ -201,13 +201,43 @@ class QwantEngine(SearchEngine):
                 print(f"[DEBUG] Qwant search error: {e}")
             return []
 
+    def _request_json(self, url: str, params: dict, headers: dict) -> Optional[dict]:
+        """Execute request and return parsed JSON with diagnostics."""
+        try:
+            response = self.session.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+        except Exception as e:
+            if self.verbose:
+                print(f"[DEBUG] Qwant HTTP request failed: {e}")
+            return None
+
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        body_text = response.text or ""
+
+        if not body_text.strip():
+            if self.verbose:
+                print("[DEBUG] Qwant returned empty response body")
+            return None
+
+        try:
+            return response.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            if self.verbose:
+                preview = body_text[:240].replace("\n", " ")
+                print(
+                    "[DEBUG] Qwant response is not valid JSON "
+                    f"(content-type: {content_type}): {e}"
+                )
+                print(f"[DEBUG] Qwant response preview: {preview}")
+            return None
+
     def _get_headers(self) -> dict:
         """Get headers for Qwant API requests"""
         return {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US;q=0.7,en;q=0.3",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Encoding": "gzip, deflate",
             "Referer": "https://www.qwant.com/",
             "Origin": "https://www.qwant.com",
             "DNT": "1",

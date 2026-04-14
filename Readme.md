@@ -114,6 +114,9 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
     ask-llm process references.bib
     ```
 
+    You can use this as an alternative to `Semantic-Scholar: true`: build your paper set in a `.bib`
+    file first, then run any `query.md` prompts on those entries.
+
 3. **Retrieve PDFs for items in a BibTeX file:**
 
     ```sh
@@ -149,7 +152,8 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   - `Model-Name: <model_identifier>` (e.g., `openai/gpt-4o-mini`, `anthropic/claude-3-5-sonnet-20241022`, `gemini/gemini-2.5-flash`)
   - `Temperature: <float_value>` (e.g., `0.7`)
   - `Web-Search: <true|false>` (enables LLM-planned Qwant search grounding for the final answer)
-  - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_paper_bulk_search) for advanced syntax. PDFs for found papers are searched using DuckDuckGo if not directly available from Semantic Scholar.)
+  - `Semantic-Scholar: <true|false>` (enables paper search via Semantic Scholar API. The query text becomes the search term. See [Semantic Scholar API docs](https://api.semanticscholar.org/api-docs/graph) for advanced syntax. PDFs for found papers are searched via Qwant if not directly available from Semantic Scholar.)
+    - This is optional. You can provide your own `.bib` files directly to `ask-llm process` and run the same prompts without any Semantic Scholar query section.
     - Additional Semantic Scholar parameters (e.g., `Sort: citationCount:desc`, `Fields-of-study: Computer Science`) can be included.
     - `relevance-search=true` enables the use of the sorting by relevance (limited to the first 100 results) and of the Semantic Scholar's retrieval score (i.e., the same used in the web interface).
     - `relevance-search=false` _(default)_ disables the relevance search and uses boolean matching, sorting by citations (by default) or by recency, up to 1000 results. Compared to the API, we added a `limit` parameter to control the number of results returned.
@@ -183,7 +187,7 @@ First, set up a `query.md` file (see [Input Files](#input-files) section or exam
   ```
 
 - **BibTeX Files (`.bib`)**
-  Processes PDFs linked in `file` fields (relative paths to the BibTeX file are supported). If a PDF is missing, we will attempt to find it online using title/authors; if we can't, analysis proceeds using only the BibTeX metadata.
+  Processes PDFs linked in `file` fields (relative paths to the BibTeX file are supported). If a PDF is missing, we will attempt to find it online using title/authors; if we can't, analysis proceeds using only the BibTeX metadata. This means `.bib` files can be the primary source for prompt-driven analysis, even when you do not use `Semantic-Scholar: true`.
 
 ---
 
